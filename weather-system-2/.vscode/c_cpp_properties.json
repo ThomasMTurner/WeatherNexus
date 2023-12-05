@@ -18,11 +18,10 @@
             "includePath": [
                 "/Users/Mycer/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/cores/arduino",
                 "/Users/Mycer/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/variants/standard",
-                "/Users/Mycer/Documents/Arduino/libraries/DFRobot_DHT20",
-                "/Users/Mycer/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/libraries/Wire/src",
                 "/Users/Mycer/Documents/Arduino/libraries/Adafruit_LiquidCrystal",
                 "/Users/Mycer/Documents/Arduino/libraries/Adafruit_MCP23017_Arduino_Library/src",
                 "/Users/Mycer/Documents/Arduino/libraries/Adafruit_BusIO",
+                "/Users/Mycer/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/libraries/Wire/src",
                 "/Users/Mycer/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/libraries/SPI/src",
                 "/Users/Mycer/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/Users/Mycer/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
