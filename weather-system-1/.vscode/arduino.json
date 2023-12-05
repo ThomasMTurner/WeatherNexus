@@ -1,0 +1,5 @@
+{
+    "port": "/dev/tty.Bluetooth-Incoming-Port",
+    "board": "arduino:avr:uno",
+    "programmer": "avrisp"
+}

@@ -3,6 +3,7 @@
 
 // ======================================== dht11
 #include "DHT.h"
+#include <Wire.h>
 
 #define DHTPIN 13    
 #define DHTTYPE DHT11   
@@ -16,11 +17,26 @@ DHT dht(DHTPIN, DHTTYPE);
 #define BMP_MOSI (11)
 #define BMP_CS   (10)
 
+const int slaveAddress = 8;
+
 Adafruit_BMP280 bmp;
+
+// ====================================== extra configurations
+
+//converter from float readings to bytes supporting I2C.
+union FloatByteConverter {
+  float f;
+  byte b[3];
+}
+
+
 
 // ======================================== start of program
 
 void setup() {
+  Wire.begin(slaveAddress);
+  Wire.onRequest(sendReadings);
+
   Serial.begin(9600);
 
   Serial.println("Starting...");
@@ -43,6 +59,18 @@ void setup() {
   
   // ======================================== 
   Serial.println("Started");
+}
+
+//function to handle sending over readings when requested by master
+void sendReadings () {
+    /*
+    Solution 1 -
+    Send values in specified order, first TMP reading, then DHT, then barometer.
+
+    */
+
+    
+
 }
 
 void loop() {
