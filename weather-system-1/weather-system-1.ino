@@ -26,7 +26,7 @@ const int slaveAddress = 8;
 //tell me the order of sensors to you will read out so I can configure the master appropriately.
 float readings[];
 //stores your output of RGB sensor.
-bool isSunny;
+int skyCondition;
 
 
 // ====================================== extra configurations
@@ -36,6 +36,25 @@ union FloatByteConverter {
   float f;
   byte b[4];
 }
+
+enum skyConditions: bool {
+    NIGHT = false,
+    OVERCAST = false,
+    SUNNY = false,
+    UNRECOGNISED = false
+};
+
+int setSkyCondition (int skyCondition, skyConditions conditions) {
+    switch (conditions) {
+      case NIGHT:
+        skyCondition = 0;
+      case OVERCAST:
+        skyCondition = 1;
+      case SUNNY:
+        skyCondition = 2;
+      case UNRECOGNISED:
+        skyCondition = 3;
+} 
 
 
 
@@ -76,9 +95,9 @@ void setup() {
 
 
 
-void sendReadings (float readings [], bool isSunny) {
+void sendReadings (float readings [], int skyCondition) {
     //here we have set a random length, manually set for this the number of sensors we collect readings for.
-    //let me know how many sensors we have, since I'll need to modify the requested number of bytes to 4n where n is the number of sensors.
+    //let me know how many sensors we have, since I'll need to modify the requested number of bytes to (4n + 2) where n is the number of sensors.
     int noOfSensors = 5;
     for (int i = 0; i < noOfSensors; i ++) {
       //create new converter for each read value.
@@ -91,8 +110,12 @@ void sendReadings (float readings [], bool isSunny) {
       }
     }
     
-    //write the final byte as our isSunny var (false = overcast)
-    Wire.write(isSunny);
+    //split and write the final two bytes as our skyCondition integer
+    //high byte transmitted first.
+    byte highByte = skyCondition >> 8; 
+    byte lowByte = skyCondition & 0xFF;
+    Wire.write(highByte);
+    Wire.write(lowByte);
   
 }
 

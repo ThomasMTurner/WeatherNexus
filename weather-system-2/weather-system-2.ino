@@ -83,7 +83,8 @@ union FloatByteConverter {
 //stores the readings from getSnapshot for each station.
 //currently only stores a single set of 3 values due to single configured station.
 float currentReadings[3];
-bool isSunny;
+//0 = night, 1 = overcast, 2 = sunny, 3 = unrecognised.
+int skyCondition;
 
 //pointers to allow buttons to toggle current station and current menu
 int currentStationPtr = 0;
@@ -244,10 +245,11 @@ int getCondition (float readings[]){
 
 //getSnapshots procedure supporting current single configured station.
 //this procedure is routed by the transmission of array of float readings for the station
-void getSnapshots (float allReadings[3], bool isSunny){
+void getSnapshots (float allReadings[3], int skyCondition){
     FloatByteConverter converter;
     //currently considering we have 3 sensors.
-    int requiredBytes = 13;
+    //need (4 * n) + 2 where n is number of sensors, 2 is used for the integer value transmitted.
+    int requiredBytes = 14;
     //collect for single station at the moment
     byte readings[requiredBytes];
     bool isSunny;
@@ -256,20 +258,30 @@ void getSnapshots (float allReadings[3], bool isSunny){
     Station currentStation = screen[0];
     int currentAddress = currentStation.address;
 
+    //where our integer has been split up.
+    byte highByte;
+    byte lowByte;
 
     Wire.beginTransmission(currentAddress);
     Wire.requestFrom(currentAddress, requiredBytes);
     for (int i = 0; i < requiredBytes; i ++) {
         if (Wire.available()) {
-            //case of reading last byte with value of isSunny.
-            if (i == requiredBytes - 1){
-                isSunny = Wire.read();
+            //case of high byte of skyCondition integer 
+            if (i == requiredBytes - 2){
+                 highByte = Wire.read();
             }
-            //case of reading float reading.
-            readings[i] = Wire.read();
+            //case of low byte of skyCondition integer
+            if (i == requiredBytes - 1){
+                lowByte = Wire.read();
+            }
+            else {
+            //case of reading float.
+                readings[i] = Wire.read();
+            }
         }
     }
 
+    //modify number of loops based on number of sensors.
     //now we have stored 12 bytes, of which there are three sets of 4 bytes pertaining to each reading
     //1: temp reading 2: .... 3: .....
     for (int i = 0; i < 3; i ++){
@@ -284,9 +296,11 @@ void getSnapshots (float allReadings[3], bool isSunny){
         Serial.println(String(allReadings[i], 2));
     }
 
-    //now get the final byte 
+    
 
     Wire.endTransmission();
+    //now get the final integer
+    skyCondition = (highByte << 8) | lowByte;
 
 }
 
