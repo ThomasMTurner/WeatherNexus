@@ -52,7 +52,7 @@ typedef struct {
     //holds readings for menus
     float readings[4];
     //holds whether the sky is currently overcast (false) or sunny (true)
-    bool isSunny;
+    int skyCondition;
     //units for each reading
     char units [4][5];
     //holds I2C address
@@ -125,7 +125,22 @@ void printCurrentScreen (int stationX, int menuX) {
         dtostrf(reading, 5, 1, buffer);
         
         //first print out station name in top row
-        //MODIFY THIS TO DISPLAY EITHER CLOUD ICON IF NOT SUNNY, AND SUN ICON IF SUNNY.
+        //MODIFY THIS TO SWITCH ON SKYCONDITION VARIABLE
+        int currentSkyCondition = currentStation.skyCondition;
+        switch (currentSkyCondition) {
+            case 0:
+                //display moon icon
+
+            case 1:
+                //display cloud icon
+            
+            case 2:
+                //display sun icon
+
+            case 3:
+                //display ERR icon.
+        }
+        
         lcd.setCursor(stationX, 0);
         delay(50);
         lcd.print(currentStation.station);
