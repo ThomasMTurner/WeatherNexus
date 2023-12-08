@@ -33,14 +33,14 @@ struct Alarm alarm = {
 const int LEDPins[3] = {A0, A1, A2};
 
 // ================================= buttons
-#define NUM_BUTTONS 4
+#define NUM_OF_BUTTONS 4
 
 struct Button {
   int pin;
   bool isOn;
 };
 
-Button buttons[NUM_BUTTONS] = {
+Button buttons[NUM_OF_BUTTONS] = {
   Button { .pin = 9, .isOn = false },
   Button { .pin = 8, .isOn = false },
   Button { .pin = 7, .isOn = false },
@@ -101,14 +101,14 @@ struct Station {
 };
 
 struct Readings DefaultReadings = {
-  .humidity          = FloatReading        { .units = "%",   .value = -1 },
-  .temperature       = FloatReading        { .units = "C",   .value = -1 },
-  .colourTemperature = IntReading          { .units = "K",   .value = -1 },
-  .illuminance       = IntReading          { .units = "lux", .value = -1 },
+  .humidity          = FloatReading { .units = "%",   .value = -1 },
+  .temperature       = FloatReading { .units = "C",   .value = -1 },
+  .colourTemperature = IntReading   { .units = "K",   .value = -1 },
+  .illuminance       = IntReading   { .units = "lux", .value = -1 },
   .skyCondition      = UNRECOGNISED
 };
 
-Station stations[] = {
+Station stations[NUM_OF_STATIONS] = {
   Station { "Station 1", 8,  false, DefaultReadings, {} },
   Station { "Station 2", 10, false, DefaultReadings, {} }
 };
@@ -366,7 +366,7 @@ void storeSnapshots () {
 
 //polls buttons on non-interrupt enabled pins.
 void pollButtons() {
-  for (int i = 0; i < NUM_BUTTONS; i ++) {
+  for (int i = 0; i < NUM_OF_BUTTONS; i ++) {
       if (digitalRead(buttons[i].pin) == HIGH) {
           buttons[i].isOn = true;
       }
@@ -377,7 +377,7 @@ void completeActionsFromButtonStates() {
     int i = 0;
     bool doContinue = true; // only allow a single action to be completed per poll cycle.
 
-    while (doContinue && i < NUM_BUTTONS) {
+    while (doContinue && i < NUM_OF_BUTTONS) {
       if (buttons[i].isOn) {
             buttons[i].isOn = false;
             
