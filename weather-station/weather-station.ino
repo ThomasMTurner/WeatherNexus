@@ -1,171 +1,161 @@
-// ======================================== tmp36
+#include <Wire.h>
+
+// ======================================== tmp36 - sensor for temperature
 #define TMPPIN A0   
 
-// ======================================== dht11
+// ======================================== dht11 - sensor for humidity
 #include "DHT.h"
-//#include <Wire.h>
 
-#define DHTPIN 13    
+#define DHTPIN 2     
 #define DHTTYPE DHT11   
+
 DHT dht(DHTPIN, DHTTYPE);
 
-// ======================================== bmp280
+// ======================================== tcs34725 - sensor for sky colour 
+#include "Adafruit_TCS34725.h"
 
-//define barometer object
-BMP280 bmp;
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
 
+// ====================================== readings
 
-//....
-#define BMP_SCK  (13)
-#define BMP_MISO (12)
-#define BMP_MOSI (11)
-#define BMP_CS   (10)
-
-//I2C slave address for this device.
-const int slaveAddress = 8;
-//tell me the order of sensors to you will read out so I can configure the master appropriately.
-float readings[];
-//stores your output of RGB sensor.
-int skyCondition;
-
-
-// ====================================== extra configurations
-
-//converter from float readings to bytes supporting I2C.
-union FloatByteConverter {
-  float f;
-  byte b[4];
-}
-
-enum skyConditions: bool {
-    NIGHT = false,
-    OVERCAST = false,
-    SUNNY = false,
-    UNRECOGNISED = false
+enum SkyCondition {
+    NIGHT,
+    OVERCAST,
+    SUNNY,
+    UNRECOGNISED
 };
 
-int setSkyCondition (int skyCondition, skyConditions conditions) {
-    switch (conditions) {
-      case NIGHT:
-        skyCondition = 0;
-      case OVERCAST:
-        skyCondition = 1;
-      case SUNNY:
-        skyCondition = 2;
-      case UNRECOGNISED:
-        skyCondition = 3;
-} 
+struct Readings {
+  bool present;
+  float humidity;
+  float temperature;
+  uint16_t colourTemperature;
+  uint16_t illuminance;
+  SkyCondition skyCondition;
+};
 
+struct Readings readings = { false, -1, -1, -1, -1, UNRECOGNISED };
 
+float updateHumidity() {
+  float humidity = dht.readHumidity();
+
+  if (isnan(humidity)) {
+    Serial.println("Failed to read from DHT sensor!");
+    readings.present = false; // humidity reading failed so we do not want to send anymore readings to master until its fixed
+    return; 
+  }
+
+  readings.humidity = humidity;
+}
+
+float updateTemperature() {
+  int reading = analogRead(TMPPIN);
+  
+  float voltage = reading * (5.0 / 1024.0);
+  
+  readings.temperature = (voltage - 0.5) * 100;
+}
+
+void updateSkyReadings() {
+  uint16_t r, g, b, c;
+  tcs.getRawData(&r, &g, &b, &c);
+
+//  readings.skyCondition = SkyCondition.OVERCAST;
+  readings.colourTemperature = tcs.calculateColorTemperature_dn40(r, g, b, c);
+  readings.illuminance = tcs.calculateLux(r, g, b);  
+}
+
+// ======================================== i2c
+const int slaveAddress = 8;
 
 // ======================================== start of program
 
 void setup() {
-  //sends to sendReadings handler upon request from master.
-  Wire.begin(slaveAddress);
-  //modified I2C transmission, takes readings and RGB sensor value.
-  Wire.onRequest(sendReadings(readings, isSunny));
-
   Serial.begin(9600);
-
+  
   Serial.println("Starting...");
+
+  // ======================================== I2C
+  Wire.begin(slaveAddress); // join the I2C bus at slaveAddress as a slave
+  Wire.onRequest(sendAllReadings); // calls sendAllReadings when requested by the master
   
   // ======================================== dht11
   dht.begin();
   
-  // ======================================== bmp280
-  if (!bmp.begin()) {
-    Serial.println("Could not find a valid BMP280 sensor, check wiring or try a different address!");
-    while (1) delay(10);
+  // ======================================== tcs34725
+  if (!tcs.begin()) {
+    Serial.println("No TCS34725 found ... check your connections");
+    while (1);
   }
-
-  /* Default settings from datasheet. */
-  bmp.setSampling(Adafruit_BMP280::MODE_FORCED,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
   
   // ======================================== 
   Serial.println("Started");
 }
 
-//place to store readings once sensors are working.
-//float allReadings [3];
+union FloatToByteConverter {
+  float theFloat;
+  byte theBytes[4];
+};
 
-
-
-void sendReadings (float readings [], int skyCondition) {
-    //here we have set a random length, manually set for this the number of sensors we collect readings for.
-    //let me know how many sensors we have, since I'll need to modify the requested number of bytes to (4n + 2) where n is the number of sensors.
-    int noOfSensors = 5;
-    for (int i = 0; i < noOfSensors; i ++) {
-      //create new converter for each read value.
-      FloatByteConverter converter;
-      //set float value in converter
-      converter.f = readings[i];
-      //write each float value as byte array to master
-      for (int i = 0; i < 4; i ++){
-        Wire.write(convert.b[i]);
-      }
-    }
-    
-    //split and write the final two bytes as our skyCondition integer
-    //high byte transmitted first.
-    byte highByte = skyCondition >> 8; 
-    byte lowByte = skyCondition & 0xFF;
-    Wire.write(highByte);
-    Wire.write(lowByte);
+void sendFloat(float reading) {
+  FloatToByteConverter converter;
+  converter.theFloat = reading;
   
+  for (int i = 0; i < 4; i++){
+    Wire.write(converter.theBytes[i]);
+  }
+}
+
+void sendInt16(uint16_t reading) {
+  Wire.write(reading & 0xff);
+  Wire.write(reading >> 8);
+}
+
+void sendSkyCondition() {
+  uint8_t conditionByte = readings.skyCondition;
+  Wire.write(conditionByte);
+}
+
+// ========================= PROTOCOL ===========================
+// 1. the first byte determines if there are readings present
+//    - 0 = not available, 1 = not available
+//    - data type = uint8_t
+//    - the communication stops here if no readings are available
+// 2. the next 4 bytes is the temperature 
+//    - data type = float, units = degrees celsius
+// 3. the next 4 bytes is the humidity 
+//    - data type = float, units = percentage
+// 4. the next 2 bytes is the colour temperature 
+//    - data type = uint16_t, units = kelvin
+// 5. the next 2 bytes is the illuminance (brightness)
+//    - data type = uint16_t, units = lux
+// 6. the next byte is the sky condition 
+//    - data type = uint8_t
+// ==============================================================
+
+void sendAllReadings() {
+  if (!readings.present) {
+    Wire.write(0);
+    return;
+  }
+  
+  Wire.write(1);
+  
+  sendFloat(readings.temperature);
+  sendFloat(readings.humidity);
+  
+  sendInt16(readings.colourTemperature);
+  sendInt16(readings.illuminance);
+  
+  sendSkyCondition();
 }
 
 void loop() {
-  // ======================================== tmp36 
-  int tmpReading = analogRead(TMPPIN);
+  readings.present = true;
   
-  float tmpVoltage = tmpReading * (5.0 / 1024.0);
-  float tmpTemperature = (tmpVoltage - 0.5) * 100;
+  updateTemperature();
+  updateHumidity();
+  updateSkyReadings();
 
-  Serial.println("--------------");
-  
-  Serial.print("TMP36 Temperature: ");
-  Serial.print(tmpTemperature);
-  Serial.println("°C");
-    
-  // ======================================== dht11  
-  float dhtHumidity = dht.readHumidity();
-  float dhtTemperature = dht.readTemperature();
-
-  if (isnan(dhtHumidity) || isnan(dhtTemperature)) {
-    Serial.println("ERROR: DHT11 READING FAILED");
-  } else { 
-    Serial.print("DHT11 Humidity: ");
-    Serial.print(dhtHumidity);
-    Serial.print("%");
-    
-    Serial.print(" | Temperature: ");
-    Serial.print(dhtTemperature);
-    Serial.println("°C");
-  }
-  
-  // ======================================== bmp280 
-  if (bmp.takeForcedMeasurement()) {
-    Serial.print("BMP280 Temperature: ");
-    Serial.print(bmp.readTemperature());
-    Serial.print("°C");
-
-    Serial.print(" | Pressure: ");
-    Serial.print(bmp.readPressure());
-    Serial.print("Pa");
-
-    Serial.print(" | Approx Altitude: ");
-    Serial.print(bmp.readAltitude(190)); // this parameter has to be adjusted to the local forecast
-    Serial.println("m");
-  } else {
-    Serial.println("ERROR: BMP280 READING FAILED");
-  }
-
-  // ======================================== wait 3s
-  Serial.println("--------------");
-  delay(3000);
+  delay(5000);
 }
