@@ -23,6 +23,10 @@ BMP280 bmp;
 
 //I2C slave address for this device.
 const int slaveAddress = 8;
+//tell me the order of sensors to you will read out so I can configure the master appropriately.
+float readings[];
+//stores your output of RGB sensor.
+bool isSunny;
 
 
 // ====================================== extra configurations
@@ -40,7 +44,8 @@ union FloatByteConverter {
 void setup() {
   //sends to sendReadings handler upon request from master.
   Wire.begin(slaveAddress);
-  Wire.onRequest(sendReadings);
+  //modified I2C transmission, takes readings and RGB sensor value.
+  Wire.onRequest(sendReadings(readings, isSunny));
 
   Serial.begin(9600);
 
@@ -70,25 +75,25 @@ void setup() {
 //float allReadings [3];
 
 
-//function to handle sending over readings when requested by master.
-void sendReadings (float tmpTemperature) {
-    /*
-    Solution -
-    Send values in specified order, first TMP reading, then DHT, then barometer.
-    */
 
-   //will need to modify with outer loop to overwrite converter for each reading.
-
-    //initialise converter
-    FloatByteConverter converter;
-    //set float value 
-    converter.f = tmpTemperature;
-
-    //write byte array to master
-    for (int i = 0; i < 4; i ++) {
-      Wire.write(converter.b[i]);
+void sendReadings (float readings [], bool isSunny) {
+    //here we have set a random length, manually set for this the number of sensors we collect readings for.
+    //let me know how many sensors we have, since I'll need to modify the requested number of bytes to 4n where n is the number of sensors.
+    int noOfSensors = 5;
+    for (int i = 0; i < noOfSensors; i ++) {
+      //create new converter for each read value.
+      FloatByteConverter converter;
+      //set float value in converter
+      converter.f = readings[i];
+      //write each float value as byte array to master
+      for (int i = 0; i < 4; i ++){
+        Wire.write(convert.b[i]);
+      }
     }
     
+    //write the final byte as our isSunny var (false = overcast)
+    Wire.write(isSunny);
+  
 }
 
 void loop() {

@@ -15,8 +15,8 @@ const int alarmTone = 400;
 //duration of each alarm sequence, want it to cycle with breaks of 1000ms until button deactivates the sound.
 const int alarmDuration = 1000;
 //duration between snapshot requests, currently set to 5 minutes.
-const int requestWaitTime = 30000;
-const int pollDelay = 450;
+const int requestWaitTime = 1000;
+const int pollDelay = 200;
 
 //entry 0 is good, entry 1 is okay, entry 2 is poor. THESE ARE LED'S WHICH SHOW THE CONDITION
 const int conditionPins[3] = {A0, A1, A2};
@@ -31,7 +31,6 @@ unsigned long lastPollTime = 0;
 
 bool alarmFlag = false;
 
-
 //holds predictions for the coming week (7 days including current)
 typedef struct {
     //holds weekdays passed from Python script (includes today up to next week).
@@ -39,34 +38,39 @@ typedef struct {
     //holds temperature predictions from models for each of the days.
     float predictedTemperature[7];
     //holds summary of weather condition prediction passed from model to chatGPT API.
+    //summary should be limited to 25 characters.
     String predictedCondition[7];
+
 } Prediction;
 
 //holds each station, its menus (which have been configured based on the sensors provided), and readings for each sensor.
 typedef struct {
-    String station;
-    String menu[4];
+    //holds name of station
+    char station[20];
+    //holds menu names
+    char menu[5][20];
+    //holds readings for menus
     float readings[4];
+    //holds whether the sky is currently overcast (false) or sunny (true)
+    bool isSunny;
+    //units for each reading
+    char units [4][5];
+    //holds I2C address
     int address;
+    //holds predictions for the coming week.
+    Prediction p;
 } Station;
 
-typedef struct {
-    Prediction p;
-    Station s[3];
-} ScreenState;
-
-ScreenState screen = {
-   {
-       {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"},
+//need to change this to reflect new and possibly more sensors used.
+Station screen []= {
+   {"Station 1", {"Humidity", "Temperature", "Wind Speed", "Air Pressure", "Temp. Predictions"}, {5.0, 7.0, 4.0, 3.0}, 1, {}, 8, {{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"},
        {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-       {"Sunny", "Cloudy", "Rainy", "Snowy", "Windy", "Thunderstorm", "Clear"}
-   },
-   {
-    {"Station 1", {"Humidity", "Temperature", "Wind Speed", "Air Pressure"}, {0, 0, 0, 0}, 8},
-    {"Station 2", {"Humidity", "Temperature", "Wind Speed", "Air Pressure"}, {0, 0, 0, 0}, 9},
-    {"Station 3", {"Humidity", "Temperature", "Wind Speed", "Air Pressure"}, {0, 0, 0, 0}, 10}
-   }
+       {"Sunny", "Cloudy", "Rainy", "Snowy", "Windy", "Thunderstorm", "Clear"}}},
+   {"Station 2", {"Humidity", "Temperature", "Wind Speed", "Air Pressure", "Temp. Predictions"}, {4.0, 6.0, 7.0, 3.0}, 1, {}, 10, {{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"},
+       {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+       {"Sunny", "Cloudy", "Rainy", "Snowy", "Windy", "Thunderstorm", "Clear"}}} 
 };
+
 
 
 
@@ -77,13 +81,93 @@ union FloatByteConverter {
 };
 
 //stores the readings from getSnapshot for each station.
-float currentReadings[3][3];
+//currently only stores a single set of 3 values due to single configured station.
+float currentReadings[3];
+bool isSunny;
 
 //pointers to allow buttons to toggle current station and current menu
 int currentStationPtr = 0;
 int currentMenuPtr = 0;
-//0 is predictions screenState and 1 is stations screenState
-int currentScreenState = 0;
+
+//finds substring of c-style string between indices n and m inclusive which is null terminated.
+char* substr(char* s, int n, int m){
+    Serial.println("Nothing for now");
+}
+
+//calculates length of c-style string (char array) which is null terminated.
+int charlen(char* str) {
+    int len = 0;
+    //add one to length each time non null-terminated character reached.
+    while(str[len] != '\0'){
+        len ++;
+    }
+    return len;
+}
+
+
+//note: using serial print out stops this functions operation
+void printCurrentScreen (int stationX, int menuX) {
+    lcd.clear();
+    Station currentStation = screen[currentStationPtr];
+
+    if (currentMenuPtr <= 4) {
+        //printing sensor data
+
+        //get the reading we want, later will concat unit to this.
+        float reading = currentStation.readings[currentMenuPtr];
+
+        //get the menu output string
+        char* menuString = strcat(currentStation.menu[currentMenuPtr], ": ");
+
+        //store float output as c-style string in buffer array.
+        char buffer[6];
+        dtostrf(reading, 5, 1, buffer);
+        
+        //first print out station name in top row
+        //MODIFY THIS TO DISPLAY EITHER CLOUD ICON IF NOT SUNNY, AND SUN ICON IF SUNNY.
+        lcd.setCursor(stationX, 0);
+        delay(50);
+        lcd.print(currentStation.station);
+
+        //next create the entire display string for bottom row and find its length to allow scrolling off
+        char* displayString = strcat(currentStation.menu[currentMenuPtr], buffer);
+        int displayStringLength = charlen(displayString);
+
+        if (displayStringLength <= 16){
+            lcd.setCursor(menuX, 1);
+            delay(50);
+            lcd.print(displayString);
+        }
+
+        else {
+            //Scrolling logic for display strings wider than display.
+            //Will work once substring function implemented.
+            int start = 0;
+            int offset = displayStringLength - 16;
+            for (int i = 0; i < offset; i ++) {
+                //take i to be the new start index of the substring
+                lcd.print(substr(displayString, i, displayStringLength - 1));
+                delay(250);
+            }
+            for (int i = 0; i < offset; i --) {
+                lcd.print(substr(displayString, i, displayStringLength - 1));
+                delay(250);
+            }
+        }
+
+        
+
+    }
+
+    else {
+        //printing weekly predictions
+        lcd.print("...");
+    }
+
+}
+
+
+
 
 
 void setup () {
@@ -107,34 +191,7 @@ void setup () {
     lcd.begin(16, 2);
     lcd.setBacklight(1);
     //print the current screen with the station at the top 5 from the left, and the menu at the bottom 0.
-    printCurrentScreen();
-}
-
-void printStationState (int stationX, int menuX) {
-    Station currentStation = screen.s[currentStationPtr];
-    //station cursor
-    lcd.setCursor(stationX, 0);
-    lcd.print(currentStation.station);
-    //menu cursor
-    lcd.setCursor(menuX, 1);
-    lcd.print(currentStation.menu[currentMenuPtr] + ": ");
-}
-
-void printPredictionState () {
-    lcd.setCursor(3, 0);
-    lcd.print("Nothing as of yet");
-}
-
-//also add state for settings
-
-void printCurrentScreen () {
-    if (currentScreenState == 0) {
-        printStationState(3, 0);
-    }
-
-    else {
-        printPredictionState();
-    }
+    printCurrentScreen(3, 0);
 }
 
 
@@ -143,11 +200,11 @@ void switchStation () {
     // clear the current reading on the screen
     lcd.clear();
     // move to next station (wrap back to initial if we get to the end.)
-    //2 since the current number of stations is 3
+    //2 since the current number of stations is 2
     currentStationPtr = (currentStationPtr + 1) % 2;
     // reset to initial menu
     //currentMenuPtr = 0;
-    printStationState(3, 0);
+    printCurrentScreen(3, 0);
 }
 
 
@@ -158,13 +215,14 @@ void switchMenu () {
     // scroll off text to give animation for next menu
     for (int positionCounter = 0; positionCounter < 15; positionCounter ++){
         //only scroll the bottom section
-        printStationState(3, positionCounter);
+        printCurrentScreen(3, positionCounter);
         delay(15);
         lcd.clear();
     }
 
-    currentMenuPtr = (currentMenuPtr + 1) % 3;
-    printStationState(3, 0);
+    //update current menu pointer to wrap between values 0, 1, 2 and 3.
+    currentMenuPtr = (currentMenuPtr + 1) % 5;
+    printCurrentScreen(3, 0);
 }
 
 /*
@@ -183,12 +241,60 @@ int getCondition (float readings[]){
     Serial.println("Nothing for now");
 }
 
-//want a single procedure to request the readings from all stations
-//this end receives a byte array which is then converted back to the float list, (as I2C sends one byte at a time, and each float is 4 bytes.)
-//return ordered based on I2C address.
-//should request 12 bytes, due to 3 float values.
+
+//getSnapshots procedure supporting current single configured station.
+//this procedure is routed by the transmission of array of float readings for the station
+void getSnapshots (float allReadings[3], bool isSunny){
+    FloatByteConverter converter;
+    //currently considering we have 3 sensors.
+    int requiredBytes = 13;
+    //collect for single station at the moment
+    byte readings[requiredBytes];
+    bool isSunny;
+    float convertedReadings[3];
+
+    Station currentStation = screen[0];
+    int currentAddress = currentStation.address;
 
 
+    Wire.beginTransmission(currentAddress);
+    Wire.requestFrom(currentAddress, requiredBytes);
+    for (int i = 0; i < requiredBytes; i ++) {
+        if (Wire.available()) {
+            //case of reading last byte with value of isSunny.
+            if (i == requiredBytes - 1){
+                isSunny = Wire.read();
+            }
+            //case of reading float reading.
+            readings[i] = Wire.read();
+        }
+    }
+
+    //now we have stored 12 bytes, of which there are three sets of 4 bytes pertaining to each reading
+    //1: temp reading 2: .... 3: .....
+    for (int i = 0; i < 3; i ++){
+        for (int j = 0; j < 4; j ++) {
+            converter.b[j] = readings[j];
+        }
+    allReadings[i] = converter.f;
+    }
+
+    //now to print out for testing purposes
+    for (int i = 0; i < 3; i ++){
+        Serial.println(String(allReadings[i], 2));
+    }
+
+    //now get the final byte 
+
+    Wire.endTransmission();
+
+}
+
+
+
+/*
+
+getSnapshots procedure which can handle multiple stations.
 
 void getSnapshots (float allReadings[3][3]) {
     //initialise byte array to float converter
@@ -225,8 +331,11 @@ void getSnapshots (float allReadings[3][3]) {
     }
 }
 
+*/
+
+
 //want to store all of the snapshots by sending them back to the database as a byte array
-//database will then sync this with RTC and store it in history (may want to use external storage unit)
+//database will then sync this with RTC and store it in history (using SD card as storage)
 void storeSnapshots () {
     Serial.println("Nothing for now");
 }
@@ -236,13 +345,16 @@ void updateScreenStateWithSnapshots () {
     Serial.println("Nothing for now");
 }
 
+//polls buttons on non-interrupt enabled pins.
 void pollButtons () {
     for (int i = 0; i < 4; i ++) {
+        Serial.println(digitalRead(buttonPins[i]));
         if (digitalRead(buttonPins[i]) == HIGH) {
             buttonStates[i] = 1;
         }
     }
 }
+
 
 void completeActionsFromButtonStates () {
     //configured to only allow a single action to be completed per poll cycle.
@@ -262,9 +374,6 @@ void completeActionsFromButtonStates () {
             }
 
             else if (i == 2) {
-                currentScreenState = (currentScreenState + 1) % 2;
-                lcd.clear();
-                printCurrentScreen();
                 actionFlag = true;
             }
 
@@ -283,10 +392,12 @@ void loop () {
     unsigned long dt = millis();
     // make a request to receive data snapshot on regular interval, for now clearing previous entries
     if (dt - lastRequestTime >= requestWaitTime) {
-        Serial.println("Make another request");
+        //Serial.println("Make another request");
         //I2C procedure to deal with request and changes to myStations.
-
-        //modifies currentReadings in place, consists of currently three float values for each of three stations.
+        //for now taking a single reading
+        //tempSnapshot();
+        //setSkyCondition();
+        //modifies currentReadings in place, consists of currently three float values for a single station
         //getSnapshots(currentReadings);
         lastRequestTime = dt;
     }
@@ -300,9 +411,6 @@ void loop () {
 
     //check which buttons have been pressed and make corresponding calls to switchMenu(), switchStation(), or noTone(alarmPin).
     completeActionsFromButtonStates();
-
-
     // call alarm if isEmergency(readings).
     // if (alarm_condition) and (!alarmFlag) then set alarm flag to true and play alarm.
-   
 }
