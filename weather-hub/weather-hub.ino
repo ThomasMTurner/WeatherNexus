@@ -22,14 +22,14 @@ struct Alarm {
 
 struct Alarm alarm = {
   .pin = 10,
-  .tone = 400,
+  .toneHz = 400,
   .duration = 1000,
   .isOn = false
 };
 
 // ================================= LEDs
 // these leds show the conditions
-// led at index 0 will be on if the conditions are good, 1 if theyre okay, 2 if theyre poor
+// led at index 0 will be turned on if the conditions are good, 1 if theyre okay, 2 if theyre poor
 const int LEDPins[3] = {A0, A1, A2};
 
 // ================================= buttons
@@ -390,7 +390,7 @@ void completeActionsFromButtonStates() {
             };
             
             doContinue = false;
-      };
+      }
       i++;
     }
 }
