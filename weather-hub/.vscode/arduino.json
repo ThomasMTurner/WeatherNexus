@@ -1,0 +1,6 @@
+{
+    "port": "/dev/tty.usbmodem14101",
+    "board": "arduino:avr:uno",
+    "programmer": "avrisp",
+    "sketch": "weather-hub.ino"
+}

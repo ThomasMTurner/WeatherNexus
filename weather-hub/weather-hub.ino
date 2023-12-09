@@ -1,418 +1,566 @@
+#include <Adafruit_LiquidCrystal.h>
 #include <Wire.h>
 
-// ================================= LCD
-#include <Adafruit_LiquidCrystal.h>
+/*
+
+TO DO -
+
+. Add heat index utility function (wet-bulb temperature), and also add this to possible readings values, route output to last reading.
+. Create icons for sun, cloud, error, and moon and display on top row.
+
+*/
+
+
+//=============================== initialisations for LCD display and LED outputs ============================== //
+
 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 Adafruit_LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-int contrast = 10; // contrast setting for LCD.
 
-//pointers to allow buttons to toggle current station and current menu
-int currentStationPtr = 0;
-int currentMenuPtr = 0;
+const int conditionPins[3] = {A0, A1, A2}; 
 
-// ================================= piezo buzzer
-struct Alarm {
-  int pin;
-  int toneHz; // tone in HZ to play alarm
-  int duration; // duration of each alarm sequence, want it to cycle with breaks of 1000ms until button deactivates the sound.
-  bool isOn;
-};
 
-struct Alarm alarm = {
-  .pin = 10,
-  .toneHz = 400,
-  .duration = 1000,
-  .isOn = false
-};
+//================ constants for single alarm, store these as constants to conserve SRAM space for LCD outputs. ============ //
 
-// ================================= LEDs
-// these leds show the conditions
-// led at index 0 will be turned on if the conditions are good, 1 if theyre okay, 2 if theyre poor
-const int LEDPins[3] = {A0, A1, A2};
+#define ALARM_PIN 10
+const uint16_t alarmTone = 400;
+const uint16_t alarmDuration = 1000;
+bool alarmFlag = false;
 
-// ================================= buttons
-#define NUM_OF_BUTTONS 4
+
+// ============= button pins and states, store this as struct conserving more memory than arrays ======= //
 
 struct Button {
-  int pin;
-  bool isOn;
+    int pin;
+    bool isOn;
 };
 
-Button buttons[NUM_OF_BUTTONS] = {
-  Button { .pin = 9, .isOn = false },
-  Button { .pin = 8, .isOn = false },
-  Button { .pin = 7, .isOn = false },
-  Button { .pin = 6, .isOn = false }
+Button buttons[4] = {
+    Button { .pin = 9, .isOn = false},
+    Button { .pin = 8, .isOn = false},
+    Button { .pin = 7, .isOn = false},
+    Button { .pin = 6, .isOn = false}
 };
 
-// ================================= times
+
+// ==================== storing times for snapshot requests and polling  ======================== //
+
+
 unsigned long lastRequestTime = 0;
-const int requestDelay = 1000; // duration between snapshot requests
+const int requestDelay = 1000;
 
 unsigned long lastPollTime = 0;
 const int pollDelay = 200;
 
-// ================================= stations
+unsigned long currentTime;
+
+
+// ========== Holds weather predictions for each weekday from Python time series model  ======== //
+
+
 struct Prediction {
-  float temperature; // predicted temperature from the model
-  char summary[25]; // holds summary of weather condition prediction passed from model to chatGPT API. max of 25 characters
+    String day; //day predicted.
+    float predictedTemperature; //temperature predicted for day.
+    char summary [25]; //summary of weather conditions from chatGPT API, max 25 characters.
+
 };
 
-enum SkyCondition {
-  NIGHT,
-  OVERCAST,
-  SUNNY,
-  UNRECOGNISED
+
+// ========== NOTE:: type casted enum class to uint8 to conserve memory and introduce better type safety  ========= //
+
+
+enum class SkyCondition : uint8_t {
+    NIGHT = 0,
+    OVERCAST = 1,
+    SUNNY = 2,
+    UNRECOGNISED = 3
 };
+
+
+// =================  stores readings for a Station  ======================= //
+char* currentDisplayString;
+
 
 #define NUM_OF_READINGS 5
-const char* readingNames[NUM_OF_READINGS] = {"Temperature", "Humidity", "Colour Temperature", "Illuminance", "Sky"};
-const char* units[NUM_OF_READINGS-1]      = {"C",           "%",        "K",                  "Lux"               };
+const char* readingNames[NUM_OF_READINGS - 1] = {"Temperature: ", "Humidity: ", "Pressure: ", "Illuminance: "};
+const char* units[NUM_OF_READINGS - 1] = {"C", "%", "K", "Lux"};
+
 
 struct Readings {
-  float humidity;
-  float temperature;
-  int colourTemperature;
-  int illuminance;
-  SkyCondition skyCondition;
+    float humidity;
+    float temperature;
+    int colourTemperature;
+    int illuminance;
+    SkyCondition skyCondition;
+};
+
+//modified default readings for UI testing.
+struct Readings DefaultReadings = {
+    .humidity          = 5,
+    .temperature       = 5,
+    .colourTemperature = 5,
+    .illuminance       = 5,
+    .skyCondition      = SkyCondition :: NIGHT
+};
+
+
+// =========== holds each station, its menus (which have been configured based on the sensors provided), and readings for each sensor. ========= //
+
+
+struct Station {
+    char stationName[20]; 
+    int address; //holds I2C address
+    Readings readings;
+    Prediction predictions[7];
+    bool isAvailable;
 };
 
 #define NUM_OF_STATIONS 2
-
-struct Station {
-    char stationName[20];
-    int address; // i2c address
-    bool isAvailable;
-    Readings readings;
-    Prediction predictions[7]; // predictions for each day in the week (next 7 days including today)
+Station stations [NUM_OF_STATIONS] = {
+    Station { "Station 1", 8, DefaultReadings, {}, false},
+    Station { "Station 2", 10, DefaultReadings, {} , false}
 };
 
-struct Readings DefaultReadings = {
-  .humidity          = -1,
-  .temperature       = -1,
-  .colourTemperature = -1,
-  .illuminance       = -1,
-  .skyCondition      = UNRECOGNISED
+
+// ====== pointers to allow buttons to toggle current station and current menu ======= //
+
+
+uint8_t currentStationPtr = 0;
+uint8_t currentMenuPtr = 0;
+
+
+// ===== creating moon, sun, error and cloud icons, LCD memory can store them at locations 0-7. Also printing logic for icons. ===== //
+
+
+void createIcons () {
+    byte moon[8] = {
+        B00000,
+        B00000,
+        B00100,
+        B00100,
+        B01110,
+        B10001,
+        B01110,
+        B00100
 };
 
-Station stations[NUM_OF_STATIONS] = {
-  Station { "Station 1", 8,  false, DefaultReadings, {} },
-  Station { "Station 2", 10, false, DefaultReadings, {} }
-};
+    byte sun[] = {
+        B00000,
+        B00000,
+        B01110,
+        B01110,
+        B01110,
+        B01110,
+        B00000,
+        B00000,
+    };
 
-//finds substring of c-style string between indices n and m inclusive which is null terminated.
-char* substr(char* s, int n, int m){
-  // todo
-  Serial.println("Nothing for now");
+    byte cloud[] = {
+        B00000,
+        B01110,
+        B01110,
+        B01110,
+        B01110,
+        B01110,
+        B01110,
+        B00000,
+    };
+    //simple exclamation mark.
+    byte error[] = {
+        B00000,
+        B01110,
+        B01110,
+        B01110,
+        B01110,
+        B00000,
+        B01110,
+        B00000,
+    };
+
+    lcd.createChar(0, moon);
+    lcd.createChar(1, sun);
+    lcd.createChar(2, error);
+    lcd.createChar(3, cloud);
 }
 
-// calculates length of char array which is null terminated.
-int charlen(char* str) {
-  int len = 0;
-  // add one to length each time non null-terminated character reached.
-  while(str[len] != '\0'){
-      len++;
-  }
-  return len;
-}
 
-// note: using serial print out stops this functions operation
-void printCurrentScreen(int stationX, int menuX) {
-    lcd.clear();
+void printIcon (Station* station) {
+    //----------- Access to SkyCondition enumerators like this due to use of enum class --------- //
+    switch (station -> readings.skyCondition) {
+
+        case SkyCondition::NIGHT:
+            //moon for night.
+            lcd.write(byte(0));
+            break;
+
+        case SkyCondition::SUNNY:
+            //sun for sunny.
+            lcd.write(byte(1));
+            break;
+
+        case SkyCondition::UNRECOGNISED:
+            //error exclamation for UNRECOGNISED.
+            lcd.write(byte(2));
+            break;
+
+        case SkyCondition::OVERCAST:
+            //cloud for overcast.
+            lcd.write(byte(3));
+            break;
     
-    Station station = stations[currentStationPtr];
+    }
+}
+
+// ======= logic to print out full screen state depending on values of currentStationPtr and currentMenuPtr ===== //
+
+
+void printCurrentScreen (int stationX = 3, int menuX = 0) {
+    lcd.clear();
+    Station* station = &stations[currentStationPtr];
+    //modified to make copy of name due to type conflicts.
+    char* readingName = strdup(readingNames[currentMenuPtr]);
+    //case of printing sensor data
     if (currentMenuPtr <= 4) {
-        // TODO: DISPLAY AN ERROR IF STATION READINGS ARE NOT AVAILABLE
-
-        //printing sensor data
-
-        //get the reading we want, later will concat unit to this.
-        char* readingName = strcat(readingNames[currentMenuPtr], ": "); //get the menu output string
+        // ======= TO DO: display error if readings not available ========= //
         char reading[6];
         switch (currentMenuPtr) {
-          case 0:
-            dtostrf(station.readings.temperature, 5, 1, reading);
-            break;
-          case 1:
-            dtostrf(station.readings.humidity, 5, 1, reading);
-            break;
-          case 2:
-            // todo: error if length of integer > 6
-            sprintf(reading, "%d", station.readings.colourTemperature);
-            break;
-          case 3:
-            // todo: error if length of integer > 6
-            sprintf(reading, "%d", station.readings.illuminance);
-            break;
-          case 4:
-            // todo: show image
-            break;
-          default:
-            // todo
-            return;
-        };
-        
-        // print out station name in top row    
+            case 0:
+                dtostrf(station -> readings.temperature, 5, 1, reading);
+                break;
+            case 1:
+                dtostrf(station -> readings.humidity, 5, 1, reading);
+                break;
+            case 2:
+                sprintf(reading, "%d" , station -> readings.colourTemperature);
+                break;
+            case 3:
+                sprintf(reading, "%d", station -> readings.illuminance);
+                break;
+            case 4:
+                break;
+                //no case for 4 since icon is displayed alongside station name
+        }
+
+        // ========= Displaying station name alongside appropriate icon for sky reading ======== //
+
         lcd.setCursor(stationX, 0);
         delay(50);
-        lcd.print(station.stationName);
+        lcd.print(station -> stationName);
 
-        // create the entire display string for bottom row and find its length to allow scrolling off
+        lcd.setCursor(13, 0);
+        delay(50);
+        printIcon(station);
+        
+
+        //====== create entire display string, store its length, reposition cursor and store display string globally for scrollOff() functionality =======//
         char* displayString = strcat(strcat(readingName, reading), units[currentMenuPtr]);
-        int displayStringLength = charlen(displayString);
+        currentDisplayString = displayString;
+        int displayStringLength = strlen(displayString);
+        lcd.setCursor(menuX, 1);
+        delay(50);
+        lcd.print(displayString);
+        
+    }
 
-        if (displayStringLength <= 16){
-            lcd.setCursor(menuX, 1);
-            delay(50);
-            lcd.print(displayString);
-        } else {
-//            ============================================================== TODO:
-//            // Scrolling logic for display strings wider than display.
-//            // Will work once substring function implemented.
-//            int start = 0;
-//            int offset = displayStringLength - 16;
-//            for (int i = 0; i < offset; i ++) {
-//                //take i to be the new start index of the substring
-//                lcd.print(substr(displayString, i, displayStringLength - 1));
-//                delay(250);
-//            }
-//            for (int i = 0; i < offset; i --) {
-//                lcd.print(substr(displayString, i, displayStringLength - 1));
-//                delay(250);
-//            }
-        }
-    } else {
+    else {
         //printing weekly predictions
         lcd.print("...");
     }
+
 }
 
-void setup() {
-    Serial.begin(9600);
+
+// ====== wraps logic for display strings wider than LCD ====== //
+#define SCROLL_DELAY 200
+
+void scrollOff (char* displayString, int displayStringLength, Station* station, int stationX, int menuX) {
+    char* substr;
+
+    //===== determine number of scrolls ======//
+    int offset = (displayStringLength + 5) - 16;
+
+       
+    for (int i = 0; i < offset; i ++) {
+        lcd.clear();
+        //==== take i to be the new start index of the substring (by making start_pointer = index) ===//
+        char* substr = &displayString[i];
+        //===== need to also re print station ===//
+        lcd.setCursor(stationX, 0);
+        lcd.print(station -> stationName);
+        lcd.setCursor(13, 0);
+        delay(50);
+        printIcon(station);
+        lcd.setCursor(menuX, 1);
+        lcd.print(substr);
+        delay(SCROLL_DELAY);
+    }
+          
+
+     //==== then finally display output as is =====//
+    lcd.clear();
+    lcd.setCursor(stationX, 0);
+    lcd.print(station -> stationName);
+    lcd.setCursor(13, 0);
+    delay(50);
+    printIcon(station);
+    lcd.setCursor(menuX, 1);
+    lcd.print(displayString);
+}
+
+
+
+void setup () {
+    Serial.begin(9600); // initialise serial monitor
     
     Wire.begin(); // initialise I2C communication
-    
-    pinMode(alarm.pin, OUTPUT); // set the alarm to output
-    
-    // set buttons 
+
+    pinMode(ALARM_PIN, OUTPUT); 
+
+    //set buttons 
     for (int i = 0; i < 4; i ++){
         pinMode(buttons[i].pin, INPUT);
     }
-    
-    // set LED's
+
+    //set LED's
     for (int i = 0; i < 3; i ++) {
-        pinMode(LEDPins[i], OUTPUT);
+        pinMode(conditionPins[i], OUTPUT);
     }
     
-    analogWrite(13, contrast); // set contrast for UI display.
-    
+    analogWrite(13, 10); // set contrast as 10 for UI display, again passing value directly to conserve SRAM space.
+   
     lcd.begin(16, 2); // set up the LCD's number of columns and rows
-    lcd.setBacklight(1);
-    printCurrentScreen(3, 0); // print the current screen with the station at the top 5 from the left, and the menu at the bottom 0.
+    lcd.setBacklight(1); 
+
+    printCurrentScreen(3, 0); //print the current screen with the station at the top 5 from the left, and the menu at the bottom 0.
 }
 
-void switchStation() {
-    // clear the current reading on the screen
+
+void switchStation () {
+    lcd.clear(); 
+    currentStationPtr = (currentStationPtr + 1) % NUM_OF_STATIONS; //wrap to number of stations so we don't scroll off.
+    printCurrentScreen();
+}
+
+void switchMenu () {
     lcd.clear();
-    // move to next station (wrap back to initial if we get to the end.)
-    //2 since the current number of stations is 2
-    currentStationPtr = (currentStationPtr + 1) % NUM_OF_STATIONS;
-    // reset to initial menu
-    //currentMenuPtr = 0;
-    printCurrentScreen(3, 0);
+    currentMenuPtr = (currentMenuPtr + 1) % (NUM_OF_READINGS - 1); //wrap to number of readings (-1 as we omitted sky condition).
+    printCurrentScreen();
 }
 
-// handles switching menus for each station
-void switchMenu() {
-  lcd.clear();
-  
-  // scroll off text to give animation for next menu
-  for (int positionCounter = 0; positionCounter < 15; positionCounter++){
-      //only scroll the bottom section
-      printCurrentScreen(3, positionCounter);
-      delay(15);
-      lcd.clear();
-  }
 
-  //update current menu pointer to wrap between values 0, 1, 2 and 3.
-  currentMenuPtr = (currentMenuPtr + 1) % NUM_OF_READINGS;
-  printCurrentScreen(3, 0);
-}
 
-/*
-  Reminder - how to use alarm.
-  Use tone(alarmPin, alarmTone, alarmDuration) - tone is measured in hertz
-  Use noTone(alarmPin) to stop the tone.
-*/
-
-bool isEmergency(float readings[]){
+bool isEmergency (float readings[]){
     Serial.println("Nothing for now");
 }
 
-int getCondition(float readings[]){
+int getCondition (float readings[]){
     Serial.println("Nothing for now");
 }
 
-// ========================= PROTOCOL ===========================
-// 1. the first byte determines if there are readings present
-//    - 0 = not available, 1 = not available
-//    - data type = uint8_t
-//    - the communication stops here if no readings are available
-// 2. the next 4 bytes is the temperature 
-//    - data type = float, units = degrees celsius
-// 3. the next 4 bytes is the humidity 
-//    - data type = float, units = percentage
-// 4. the next 2 bytes is the colour temperature 
-//    - data type = uint16_t, units = kelvin
-// 5. the next 2 bytes is the illuminance (brightness)
-//    - data type = uint16_t, units = lux
-// 6. the next byte is the sky condition 
-//    - data type = uint8_t
-// ==============================================================
 
-#define NUM_OF_REQUIRED_BYTES 14 // 1 + 4 + 4 + 2 + 2 + 1
+//========== utility functions to convert between dtypes during transmission ========== //
 
-// allows quick conversion from byte array received via I2C and the float reading out we want.
+
+#define NUM_OF_REQUIRED_BYTES 14
+
 union FloatToByteConverter {
     float theFloat;
     byte theBytes[4];
 };
 
-float convertNextBytesToFloat(int *curByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
-  FloatToByteConverter converter;
-  
-  for (int i = 0; i < 4; i++) {
-    converter.theBytes[i] = bytes[*curByte];
-    curByte++;
-  };
-  
-  return converter.theFloat;
-}
+float convertBytesToFloat(int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
+    FloatToByteConverter converter;
 
-uint16_t convertNextBytesToInt16(int *curByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
-  byte least_sig = bytes[*curByte]; // todo: add [curByte++] here?
-  curByte++;
-  
-  byte most_sig = bytes[*curByte];
-  curByte++;
-
-  return ((uint16_t)most_sig << 8) | least_sig;
-}
-
-// getSnapshots procedure supporting current single configured station.
-// this procedure is routed by the transmission of array of float readings for the station
-void getSnapshots(){
-  for (int i = 0; i < NUM_OF_STATIONS; i++) {
-    Station* station = &stations[i];
-
-    Wire.beginTransmission(station->address);
-    Wire.requestFrom(station->address, NUM_OF_REQUIRED_BYTES);
-
-    int curByte = 0;
-    byte bytes[NUM_OF_REQUIRED_BYTES] = {};
-    
-    for (int i = 0; i < NUM_OF_REQUIRED_BYTES; i++) {
-      if (Wire.available()) {
-        bytes[i] = Wire.read();
-      }
+    for (int i = 0; i < 4; i ++) {
+        converter.theBytes[i] = bytes[*currentByte];
+        currentByte ++;
     }
-
-    if (bytes[curByte] == 0) {
-      station->isAvailable = false;
-      return;
-    };
     
-    station->isAvailable = true;
-    curByte++;
-
-    station->readings.temperature = convertNextBytesToFloat(&curByte, bytes);
-    
-    station->readings.humidity = convertNextBytesToFloat(&curByte, bytes);
-
-    station->readings.colourTemperature = convertNextBytesToInt16(&curByte, bytes);
-
-    station->readings.illuminance = convertNextBytesToInt16(&curByte, bytes);
-
-    station->readings.skyCondition = bytes[curByte];
-    
-    Wire.endTransmission();
-  }
+    return converter.theFloat;
 }
 
-//want to store all of the snapshots by sending them back to the database as a byte array
-//database will then sync this with RTC and store it in history (using SD card as storage)
+uint16_t convertBytesToInt16 (int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
+    byte leastSig = bytes[*currentByte];
+    currentByte ++;
+
+    byte mostSig = bytes[*currentByte];
+    currentByte ++;
+
+    return ((uint16_t)mostSig << 8) | leastSig;
+}
+
+
+// ========== PROTOCOL ================ //
+
+// 1. First byte determines if there are readings present
+//  - 0 = not available, 1 = available
+//  - dtype = bool (I think bool is preferable over uint8_t)
+//  - communication stops here if no readings available
+// 2. Next 4 bytes is temperature
+//  - dtype = float, units = celcius
+// 3. Next 4 bytes is humidity
+//  -dtype = float, units = percentage
+// 4. Next 2 bytes is colour temperature 
+//  -dtype = uint16_t, units = kelvin
+// 5. Next 2 bytes is illuminance (brightness)
+//  -dtype = uint16_t, units = lux
+// 6. Last byte is sky condition
+//  -dtype = uint8_t
+// May want to add for docs - efficient for communication since never exceeds 32 byte buffer for I2C.
+// ===================================== //
+
+
+void getSnapshots () {
+    for (int i = 0; i < NUM_OF_STATIONS; i ++) {
+        Station* station = &stations[i];
+
+        //===== begin transmission process by requesting required bytes for protocol ==== //
+        Wire.beginTransmission(station -> address);
+        Wire.requestFrom(station -> address, NUM_OF_REQUIRED_BYTES);
+
+        int currentByte = 0;
+        byte bytes[NUM_OF_REQUIRED_BYTES] = {};
+
+        //===== read all available bytes directly into initialised byte array ==== //
+        for (int i = 0; i < NUM_OF_REQUIRED_BYTES; i ++) {
+            if (Wire.available()){
+                bytes[i] = Wire.read();
+            }
+        }
+
+        // ===== cases for PROTOCOL (1) ==== //
+        if (bytes[currentByte] == 0) {
+            station -> isAvailable = false;
+            return;
+        }
+
+        station -> isAvailable = true;
+        currentByte ++;
+
+        //========== case for float readings, take next 4 bytes and read them to station struct  ========= //
+        station -> readings.temperature = convertBytesToFloat(&currentByte, bytes);
+        station -> readings.humidity = convertBytesToFloat(&currentByte, bytes);
+
+        //======= case for uint16_t readings, takes next two bytes and reads them to station struct ====== //
+        station -> readings.colourTemperature = convertBytesToInt16(&currentByte, bytes);
+        station -> readings.illuminance = convertBytesToInt16(&currentByte, bytes);
+
+        //====== case for value of skyCondition enum, casts byte to uint8_t ====== //
+        station -> readings.skyCondition =  static_cast<SkyCondition>(bytes[currentByte]);
+
+        Wire.endTransmission();
+    }
+}
+
+//=========== utility functions for storeSnapshots() ======= //
+
+//!! below union may be helpful in Dylan's above conversion function !!//
+
+union Int16ToByteConverter {
+    uint16_t theInt;
+    byte theBytes[4];
+};
+
+// ! would have used a single generic function for below with type checking but Arduino C++ deprecates the use of (type_id) due to runtime constraints. !//
+
+byte* convertFloatToBytes (float theFloat) {
+    FloatToByteConverter converter;
+    converter.theFloat = theFloat;
+    return converter.theBytes;
+}
+
+byte* convertInt16ToBytes (uint16_t theInt) {
+    Int16ToByteConverter converter;
+    converter.theInt = theInt;
+    return converter.theBytes;
+}
+
+// ======= Simple protocol to send stations data to the DB ======= //
+
 void storeSnapshots () {
-  Serial.println("Nothing for now");
+    for (int i = 0; i < NUM_OF_STATIONS; i ++) {
+        Station* station = &stations[i];
+        Wire.beginTransmission(9);
+
+        // ====== write float values in sequence of 4 to DB ======== //
+        Wire.write(convertFloatToBytes(station -> readings.temperature), 4);
+        Wire.write(convertFloatToBytes(station -> readings.humidity), 4);
+
+        // ===== write uint16 values in sequence of 2 to DB ============ //
+        Wire.write(convertInt16ToBytes(station -> readings.colourTemperature), 2);
+        Wire.write(convertInt16ToBytes(station -> readings.illuminance), 2);
+
+        // ===== send single byte for sky condition last, cast value as write() doesn't accept enumerators ======== //
+        Wire.write(static_cast<uint8_t>(station -> readings.skyCondition));
+        Wire.endTransmission();
+    }
+
 }
 
-// DONT NEED THIS ANYMORE AS THIS IS DONE INSIDE getSnapshots?
-////then will modify myStations struct, using the new snapshots.
-//void updateScreenStateWithSnapshots () {
-//    Serial.println("Nothing for now");
-//}
 
-//polls buttons on non-interrupt enabled pins.
-void pollButtons() {
-  for (int i = 0; i < NUM_OF_BUTTONS; i ++) {
-      if (digitalRead(buttons[i].pin) == HIGH) {
-          buttons[i].isOn = true;
-      }
-  }
+// =========== polls buttons on non-interrupt enabled pins. ========= //
+void pollButtons () {
+    for (int i = 0; i < 4; i ++) {
+        if (digitalRead(buttons[i].pin) == HIGH) {
+            buttons[i].isOn = true;
+        }
+    }
 }
 
-void completeActionsFromButtonStates() {
-    int i = 0;
-    bool doContinue = true; // only allow a single action to be completed per poll cycle.
-
-    while (doContinue && i < NUM_OF_BUTTONS) {
-      if (buttons[i].isOn) {
+// ========= self explanatory, modified to use switch and break statements ======== //
+void completeActionsFromButtonStates () {
+    bool actionMade = false;
+    for (int i = 0; i < 4; i ++) {
+        if (buttons[i].isOn) {
             buttons[i].isOn = false;
-            
             switch (i) {
-              case 0:
-                switchMenu();
-                break;
-              case 1:
-                switchStation();
-                break;
-              case 2:
-                // ========================================= todo
-                break;
-              case 3:
-                noTone(alarm.pin);
-                break;
-              default:
-                // todo: not possible
-                return;
-            };
-            
-            doContinue = false;
-      }
-      i++;
+                case 0:
+                    switchMenu();
+                    actionMade = true;
+                    break;
+                case 1:
+                    switchStation();
+                    actionMade = true;
+                    break;
+                case 2:
+                    actionMade = true;
+                    // ===== TO DO! ===== //
+                    Station* station = &stations[currentStationPtr];
+                    int displayStringLength = strlen(currentDisplayString);
+                    if (displayStringLength > 16) {
+                        scrollOff(currentDisplayString, displayStringLength, station, 3, 0);
+                    }
+                    break;
+                case 3:
+                    noTone(ALARM_PIN);
+                    actionMade = true;
+                    break;
+            }
+        }
+        if (actionMade) {
+            break;
+        }
     }
 }
 
-void loop() {
-    unsigned long curTime = millis();
-    
-    // make a request to receive data snapshot on regular interval, for now clearing previous entries
-    if (curTime - lastRequestTime >= requestDelay) {
-        getSnapshots();
-        lastRequestTime = curTime;
+
+
+void loop () {
+    currentTime = millis();
+
+    //========== make a request to receive data snapshot on regular interval, for now clearing previous entries ========//
+    if (currentTime - lastRequestTime >= requestDelay) {
+        getSnapshots();                    
+        lastRequestTime = currentTime;
     }
 
-    //set buttons states based on press events.
-    // this is wrapped in debouncer
-    if (curTime - lastPollTime >= pollDelay) {
+    //========= set buttons states based on press events, wrapped in debouncer ========//
+    if (currentTime - lastPollTime >= pollDelay) {
         pollButtons();
-        lastPollTime = curTime;
+        lastPollTime = currentTime;
     }
 
-    //check which buttons have been pressed and make corresponding calls to switchMenu(), switchStation(), or noTone(alarmPin).
     completeActionsFromButtonStates();
-    
-    // TODO: call alarm if isEmergency(readings).
-    // if (alarm_condition) and (!alarmFlag) then set alarm flag to true and play alarm.
+    //===== TO DO!: if (emergency) and (!alarmFlag) then set alarm flag to true and play alarm. =====//
 }
