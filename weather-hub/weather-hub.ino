@@ -237,9 +237,7 @@ void printCurrentScreen (int stationX = 3, int menuX = 0) {
             case 3:
                 sprintf(reading, "%d", station -> readings.illuminance);
                 break;
-            case 4:
-                break;
-                //no case for 4 since icon is displayed alongside station name
+            //no case for 4 since icon is displayed alongside station name
         }
 
         // ========= Displaying station name alongside appropriate icon for sky reading ======== //
@@ -380,14 +378,22 @@ float convertBytesToFloat(int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
     return converter.theFloat;
 }
 
+//!! below union may be helpful in Dylan's above conversion function !!//
+
+union Int16ToByteConverter {
+    uint16_t theInt;
+    byte theBytes[2];
+};
+
 uint16_t convertBytesToInt16 (int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
-    byte leastSig = bytes[*currentByte];
-    currentByte ++;
+    Int16ToByteConverter converter;
 
-    byte mostSig = bytes[*currentByte];
-    currentByte ++;
-
-    return ((uint16_t)mostSig << 8) | leastSig;
+    for (int i = 0; i < 2; i ++) {
+        converter.theBytes[i] = bytes[*currentByte];
+        currentByte ++;
+    }
+    
+    return converter.theInt;
 }
 
 
@@ -455,13 +461,6 @@ void getSnapshots () {
 
 //=========== utility functions for storeSnapshots() ======= //
 
-//!! below union may be helpful in Dylan's above conversion function !!//
-
-union Int16ToByteConverter {
-    uint16_t theInt;
-    byte theBytes[4];
-};
-
 // ! would have used a single generic function for below with type checking but Arduino C++ deprecates the use of (type_id) due to runtime constraints. !//
 
 byte* convertFloatToBytes (float theFloat) {
@@ -510,38 +509,34 @@ void pollButtons () {
 
 // ========= self explanatory, modified to use switch and break statements ======== //
 void completeActionsFromButtonStates () {
-    bool actionMade = false;
-    for (int i = 0; i < 4; i ++) {
-        if (buttons[i].isOn) {
-            buttons[i].isOn = false;
-            switch (i) {
-                case 0:
-                    switchMenu();
-                    actionMade = true;
-                    break;
-                case 1:
-                    switchStation();
-                    actionMade = true;
-                    break;
-                case 2:
-                    actionMade = true;
-                    // ===== TO DO! ===== //
-                    Station* station = &stations[currentStationPtr];
-                    int displayStringLength = strlen(currentDisplayString);
-                    if (displayStringLength > 16) {
-                        scrollOff(currentDisplayString, displayStringLength, station, 3, 0);
-                    }
-                    break;
-                case 3:
-                    noTone(ALARM_PIN);
-                    actionMade = true;
-                    break;
-            }
-        }
-        if (actionMade) {
-            break;
-        }
+  int i = 0;
+  bool actionMade = false;
+  while (!actionMade && i < 4) {
+    if (buttons[i].isOn) {
+      buttons[i].isOn = false;
+      switch (i) {
+          case 0:
+              switchMenu();
+              break;
+          case 1:
+              switchStation();
+              break;
+          case 2:
+              // ===== TO DO! ===== //
+              Station* station = &stations[currentStationPtr];
+              int displayStringLength = strlen(currentDisplayString);
+              if (displayStringLength > 16) {
+                  scrollOff(currentDisplayString, displayStringLength, station, 3, 0);
+              }
+              break;
+          case 3:
+              noTone(ALARM_PIN);
+              break;
+      }
+      actionMade = true;
+      i++;
     }
+  }
 }
 
 
