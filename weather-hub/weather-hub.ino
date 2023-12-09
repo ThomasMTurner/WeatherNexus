@@ -477,7 +477,7 @@ byte* convertInt16ToBytes (uint16_t theInt) {
 
 // ======= Simple protocol to send stations data to the DB ======= //
 
-void storeSnapshots () {
+void storeSnapshots() {
     for (int i = 0; i < NUM_OF_STATIONS; i ++) {
         Station* station = &stations[i];
         Wire.beginTransmission(9);
