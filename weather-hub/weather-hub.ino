@@ -15,7 +15,7 @@ int currentMenuPtr = 0;
 // ================================= piezo buzzer
 struct Alarm {
   int pin;
-  int tone; // tone in HZ to play alarm
+  int toneHz; // tone in HZ to play alarm
   int duration; // duration of each alarm sequence, want it to cycle with breaks of 1000ms until button deactivates the sound.
   bool isOn;
 };
