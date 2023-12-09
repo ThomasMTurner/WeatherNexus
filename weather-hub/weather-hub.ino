@@ -68,25 +68,15 @@ enum SkyCondition {
     UNRECOGNISED
 };
 
-// todo: would be nice if C had generic types
-struct FloatReading {
-  String units;
-  float value;
-};
-
-struct IntReading {
-  String units;
-  uint16_t value;
-};
-
 #define NUM_OF_READINGS 5
 const char* readingNames[NUM_OF_READINGS] = {"Temperature", "Humidity", "Colour Temperature", "Illuminance", "Sky"};
+const char* units[NUM_OF_READINGS-1] = {"C", "%", "K", "Lux"};
 
 struct Readings {
-  FloatReading humidity;
-  FloatReading temperature;
-  IntReading colourTemperature;
-  IntReading illuminance;
+  float humidity;
+  float temperature;
+  int colourTemperature;
+  int illuminance;
   SkyCondition skyCondition;
 };
 
@@ -101,10 +91,10 @@ struct Station {
 };
 
 struct Readings DefaultReadings = {
-  .humidity          = FloatReading { .units = "%",   .value = -1 },
-  .temperature       = FloatReading { .units = "C",   .value = -1 },
-  .colourTemperature = IntReading   { .units = "K",   .value = -1 },
-  .illuminance       = IntReading   { .units = "lux", .value = -1 },
+  .humidity          = -1,
+  .temperature       = -1,
+  .colourTemperature = -1,
+  .illuminance       = -1,
   .skyCondition      = UNRECOGNISED
 };
 
@@ -144,18 +134,18 @@ void printCurrentScreen(int stationX, int menuX) {
         char reading[6];
         switch (currentMenuPtr) {
           case 0:
-            dtostrf(station.readings.temperature.value, 5, 1, reading);
+            dtostrf(station.readings.temperature, 5, 1, reading);
             break;
           case 1:
-            dtostrf(station.readings.humidity.value, 5, 1, reading);
+            dtostrf(station.readings.humidity, 5, 1, reading);
             break;
           case 2:
             // todo: error if length of integer > 6
-            sprintf(reading, "%d", station.readings.colourTemperature.value);
+            sprintf(reading, "%d", station.readings.colourTemperature);
             break;
           case 3:
             // todo: error if length of integer > 6
-            sprintf(reading, "%d", station.readings.illuminance.value);
+            sprintf(reading, "%d", station.readings.illuminance);
             break;
           case 4:
             // todo: show image
@@ -171,7 +161,7 @@ void printCurrentScreen(int stationX, int menuX) {
         lcd.print(station.stationName);
 
         // create the entire display string for bottom row and find its length to allow scrolling off
-        char* displayString = strcat(readingName, reading);
+        char* displayString = strcat(strcat(readingName, reading), units[currentMenuPtr]);
         int displayStringLength = charlen(displayString);
 
         if (displayStringLength <= 16){
@@ -338,13 +328,13 @@ void getSnapshots(){
     station->isAvailable = true;
     curByte++;
 
-    station->readings.temperature.value = convertNextBytesToFloat(&curByte, bytes);
+    station->readings.temperature = convertNextBytesToFloat(&curByte, bytes);
     
-    station->readings.humidity.value = convertNextBytesToFloat(&curByte, bytes);
+    station->readings.humidity = convertNextBytesToFloat(&curByte, bytes);
 
-    station->readings.colourTemperature.value = convertNextBytesToInt16(&curByte, bytes);
+    station->readings.colourTemperature = convertNextBytesToInt16(&curByte, bytes);
 
-    station->readings.illuminance.value = convertNextBytesToInt16(&curByte, bytes);
+    station->readings.illuminance = convertNextBytesToInt16(&curByte, bytes);
 
     station->readings.skyCondition = bytes[curByte];
     
