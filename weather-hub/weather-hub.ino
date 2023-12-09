@@ -534,8 +534,8 @@ void completeActionsFromButtonStates () {
               break;
       }
       actionMade = true;
-      i++;
-    }
+    }  
+    i++;
   }
 }
 
