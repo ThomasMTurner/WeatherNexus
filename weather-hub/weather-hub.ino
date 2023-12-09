@@ -56,16 +56,15 @@ const int pollDelay = 200;
 
 // ================================= stations
 struct Prediction {
-  String day;
   float temperature; // predicted temperature from the model
   char summary[25]; // holds summary of weather condition prediction passed from model to chatGPT API. max of 25 characters
 };
 
 enum SkyCondition {
-    NIGHT,
-    OVERCAST,
-    SUNNY,
-    UNRECOGNISED
+  NIGHT,
+  OVERCAST,
+  SUNNY,
+  UNRECOGNISED
 };
 
 #define NUM_OF_READINGS 5
