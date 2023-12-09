@@ -18,11 +18,11 @@ Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS347
 
 // ====================================== readings
 
-enum SkyCondition {
-    NIGHT,
-    OVERCAST,
-    SUNNY,
-    UNRECOGNISED
+enum class SkyCondition : uint8_t {
+    NIGHT = 0,
+    OVERCAST = 1,
+    SUNNY = 2,
+    UNRECOGNISED = 3
 };
 
 struct Readings {
@@ -34,7 +34,7 @@ struct Readings {
   SkyCondition skyCondition;
 };
 
-struct Readings readings = { false, -1, -1, -1, -1, UNRECOGNISED };
+struct Readings readings = { false, -1, -1, -1, -1, SkyCondition::UNRECOGNISED };
 
 float updateHumidity() {
   float humidity = dht.readHumidity();
@@ -101,19 +101,19 @@ void sendFloat(float reading) {
   FloatToByteConverter converter;
   converter.theFloat = reading;
   
-  for (int i = 0; i < 4; i++){
-    Wire.write(converter.theBytes[i]);
-  }
+  Wire.write(converter.theBytes, 4);
 }
+
+union Int16ToByteConverter {
+  uint16_t theInt;
+  byte theBytes[2];
+};
 
 void sendInt16(uint16_t reading) {
-  Wire.write(reading & 0xff);
-  Wire.write(reading >> 8);
-}
-
-void sendSkyCondition() {
-  uint8_t conditionByte = readings.skyCondition;
-  Wire.write(conditionByte);
+  Int16ToByteConverter converter;
+  converter.theInt = reading;
+  
+  Wire.write(converter.theBytes, 2);
 }
 
 // ========================= PROTOCOL ===========================
@@ -147,7 +147,7 @@ void sendAllReadings() {
   sendInt16(readings.colourTemperature);
   sendInt16(readings.illuminance);
   
-  sendSkyCondition();
+  Wire.write((byte) readings.skyCondition);
 }
 
 void loop() {
