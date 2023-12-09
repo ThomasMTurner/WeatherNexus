@@ -313,20 +313,25 @@ void getSnapshots(){
     int curByte = 0;
     byte bytes[NUM_OF_REQUIRED_BYTES] = {};
     
-    for (int i = 0; i < NUM_OF_REQUIRED_BYTES; i++) {
-      if (Wire.available()) {
-        bytes[i] = Wire.read();
-      }
+    if (Wire.available()) {
+        bytes[0] = Wire.read();
     }
 
-    if (bytes[curByte] == 0) {
+    // need to check first byte to determine if the readings are present
+    if (bytes[0] == 0) {
       station->isAvailable = false;
       return;
     };
     
     station->isAvailable = true;
     curByte++;
-
+    
+    for (int i = 1; i < NUM_OF_REQUIRED_BYTES; i++) {
+      if (Wire.available()) {
+        bytes[i] = Wire.read();
+      }
+    }
+    
     station->readings.temperature = convertNextBytesToFloat(&curByte, bytes);
     
     station->readings.humidity = convertNextBytesToFloat(&curByte, bytes);
