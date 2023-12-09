@@ -70,7 +70,7 @@ enum SkyCondition {
 
 #define NUM_OF_READINGS 5
 const char* readingNames[NUM_OF_READINGS] = {"Temperature", "Humidity", "Colour Temperature", "Illuminance", "Sky"};
-const char* units[NUM_OF_READINGS-1] = {"C", "%", "K", "Lux"};
+const char* units[NUM_OF_READINGS-1]      = {"C",           "%",        "K",                  "Lux"               };
 
 struct Readings {
   float humidity;
@@ -345,7 +345,7 @@ void getSnapshots(){
 //want to store all of the snapshots by sending them back to the database as a byte array
 //database will then sync this with RTC and store it in history (using SD card as storage)
 void storeSnapshots () {
-    Serial.println("Nothing for now");
+  Serial.println("Nothing for now");
 }
 
 // DONT NEED THIS ANYMORE AS THIS IS DONE INSIDE getSnapshots?
