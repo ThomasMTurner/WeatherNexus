@@ -79,6 +79,11 @@ void setup () {
     // ====== TO DO: below set pins for RTC and SD card modules ====== //
 }
 
+// ======= sends Snapshot(s) to model using the Serial port ====== //
+void sendSnapshotToModel (Snapshot* snapshots) {
+    //...
+}
+
 
 //=========== PROTOCOL FOR REFERENCE ======== //
 
@@ -91,6 +96,7 @@ void setup () {
 
 // ======================= //
 void storeSnapshots () {
+    Snapshot* snapshots[NUM_OF_STATIONS];
     for (int i = 0; i < NUM_OF_STATIONS; i++) {
         int currentByte = 0;
         Snapshot snapshot;
@@ -101,13 +107,18 @@ void storeSnapshots () {
             snapshot.colourTemp = castBytesToInt16(Wire.read(), currentByte);
             snapshot.illuminance = castBytesToInt16(Wire.read(), currentByte);
             snapshot.skyCondition = <static_cast<uint8_t>(Wire.read());
-            
+            //======= set time to output from RTC here  ============//
         }
+
+        snapshots.push_back(snapshot);
     }
+
+    sendSnapshotsToModel(snapshots);
+    storeSnapshotsOnSD(snapshots);
 }
 
 // ======= TO DO: below store snapshot on SD card. ====== //
-void storeSnapshotOnSD (Snapshot snapshot) {
+void storeSnapshotsOnSD (Snapshot* snapshots) {
     // ...
 }
 
