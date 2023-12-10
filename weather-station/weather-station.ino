@@ -2,9 +2,9 @@
 #include "DHT.h"
 #include "Adafruit_TCS34725.h"
 
-#define TMPPIN A0 // temperature sensor
+#define TMPPIN A1 // temperature sensor
 
-#define DHTPIN 2 // humidity sensor  
+#define DHTPIN A0 // humidity sensor  
 #define DHTTYPE DHT11   
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -66,9 +66,49 @@ void updateSkyReadings() {
   uint16_t r, g, b, c;
   tcs.getRawData(&r, &g, &b, &c);
 
-//  readings.skyCondition = SkyCondition.OVERCAST;
   readings.colourTemperature = tcs.calculateColorTemperature_dn40(r, g, b, c);
   readings.illuminance = tcs.calculateLux(r, g, b);  
+
+  if (readings.illuminance < 1) {
+    readings.skyCondition = SkyCondition::NIGHT;
+    return;
+  }
+  
+  uint32_t sum = c;
+  float red, green, blue;
+  if (sum == 0) {
+    red = 0;
+    green = 0; 
+    blue = 0;
+  } else {
+    red = (float)r / sum;
+    green = (float)g / sum;
+    blue = (float)b / sum;
+  }
+
+  float maxRGB = max(red, max(green, blue));
+  float minRGB = min(red, min(green, blue));
+
+  float delta = maxRGB - minRGB;
+  float hue;
+
+  if (maxRGB == red) {
+    hue = fmod(((green - blue) / delta), 6.0);
+  } else if (maxRGB == green) {
+    hue = ((blue - red) / delta) + 2;
+  } else {
+    hue = ((red - green) / delta) + 4;
+  }
+  
+  hue = hue * 60;
+
+  if (hue > 140 && hue < 245) {
+    readings.skyCondition = SkyCondition::SUNNY;
+  } else if (readings.illuminance < 2000) {
+    readings.skyCondition = SkyCondition::OVERCAST;
+  } else {
+    readings.skyCondition = SkyCondition::UNRECOGNISED;
+  }
 }
 
 void setup() {
