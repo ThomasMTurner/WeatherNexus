@@ -1,32 +1,24 @@
 #include <Wire.h>
-
-// ======================================== tmp36 - sensor for temperature
-#define TMPPIN A0   
-
-// ======================================== dht11 - sensor for humidity
 #include "DHT.h"
-
-#define DHTPIN 2     
-#define DHTTYPE DHT11   
-
-DHT dht(DHTPIN, DHTTYPE);
-
-// ======================================== tcs34725 - sensor for sky colour 
 #include "Adafruit_TCS34725.h"
 
-Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X);
+#define TMPPIN A0 // temperature sensor
 
-// ====================================== readings
+#define DHTPIN 2 // humidity sensor  
+#define DHTTYPE DHT11   
+DHT dht(DHTPIN, DHTTYPE);
+
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_614MS, TCS34725_GAIN_1X); // colour sensor
 
 enum class SkyCondition : uint8_t {
-    NIGHT = 0,
-    OVERCAST = 1,
-    SUNNY = 2,
-    UNRECOGNISED = 3
+  NIGHT = 0,
+  OVERCAST = 1,
+  SUNNY = 2,
+  UNRECOGNISED = 3
 };
 
 struct Readings {
-  bool present;
+  bool present; // whether the readings are up to date and correct
   float humidity;
   float temperature;
   uint16_t colourTemperature;
@@ -34,8 +26,20 @@ struct Readings {
   SkyCondition skyCondition;
 };
 
-struct Readings readings = { false, -1, -1, -1, -1, SkyCondition::UNRECOGNISED };
+// current readings. readings are not present.
+struct Readings readings = { 
+  .present = false, 
+  .humidity = -1, 
+  .temperature = -1, 
+  .colourTemperature = -1, 
+  .illuminance = -1, 
+  .skyCondition = SkyCondition::UNRECOGNISED 
+};
 
+const int slaveAddress = 8; // this weather station's I2C address
+
+// PURPOSE: read the humidity from the DHT11 sensor and store it in the readings struct
+// WARNING: its possible for this reading to fail (hence present being set to false)
 float updateHumidity() {
   float humidity = dht.readHumidity();
 
@@ -48,14 +52,16 @@ float updateHumidity() {
   readings.humidity = humidity;
 }
 
+// PURPOSE: get the temperature from the TMP36 sensor and update its value in the readings struct
 float updateTemperature() {
   int reading = analogRead(TMPPIN);
   
-  float voltage = reading * (5.0 / 1024.0);
+  float voltage = reading * (5.0 / 1024.0); // todo: explain these calculations
   
   readings.temperature = (voltage - 0.5) * 100;
 }
 
+// PURPOSE: calculate all the readings that are associated with the TCS34725 sensor and update readings struct accordingly
 void updateSkyReadings() {
   uint16_t r, g, b, c;
   tcs.getRawData(&r, &g, &b, &c);
@@ -65,30 +71,21 @@ void updateSkyReadings() {
   readings.illuminance = tcs.calculateLux(r, g, b);  
 }
 
-// ======================================== i2c
-const int slaveAddress = 8;
-
-// ======================================== start of program
-
 void setup() {
   Serial.begin(9600);
   
   Serial.println("Starting...");
 
-  // ======================================== I2C
   Wire.begin(slaveAddress); // join the I2C bus at slaveAddress as a slave
   Wire.onRequest(sendAllReadings); // calls sendAllReadings when requested by the master
   
-  // ======================================== dht11
-  dht.begin();
+  dht.begin(); 
   
-  // ======================================== tcs34725
   if (!tcs.begin()) {
     Serial.println("No TCS34725 found ... check your connections");
-    while (1);
+    while (1); // hang
   }
   
-  // ======================================== 
   Serial.println("Started");
 }
 
@@ -97,6 +94,8 @@ union FloatToByteConverter {
   byte theBytes[4];
 };
 
+// PURPOSE:   send a float reading over I2C
+// PARAMETER: the reading to be sent
 void sendFloat(float reading) {
   FloatToByteConverter converter;
   converter.theFloat = reading;
@@ -109,6 +108,8 @@ union Int16ToByteConverter {
   byte theBytes[2];
 };
 
+// PURPOSE:   send a uint16_t reading over I2C
+// PARAMETER: the reading to be sent
 void sendInt16(uint16_t reading) {
   Int16ToByteConverter converter;
   converter.theInt = reading;
@@ -139,7 +140,7 @@ void sendAllReadings() {
     return;
   }
   
-  Wire.write(1);
+  Wire.write(1); // readings are present so send 1
   
   sendFloat(readings.temperature);
   sendFloat(readings.humidity);
