@@ -46,13 +46,17 @@ const int requestDelay = 1000; // in ms
 unsigned long lastPollTime = 0;
 const int pollDelay = 200; // in ms
 
+unsigned long lastPredictionTime = 0;
+const int predictionDelay = 3600000; // in ms //sends new prediction batch every 1hr
+
 unsigned long currentTime;
 
 // holds weather predictions for each weekday from Python time series model
 struct Prediction {
+    uint8_t id;
     String day; // day predicted.
     float predictedTemperature; // temperature predicted for day.
-    char summary[25]; // summary of weather conditions from chatGPT API, max 25 characters.
+    //char summary[25]; // summary of weather conditions from chatGPT API, max 25 characters.
 };
 
 // type casted enum class to uint8 to conserve memory and introduce better type safety 
@@ -105,9 +109,10 @@ struct Station {
 };
 
 #define NUM_OF_STATIONS 2
+//I2C address should increment up from 8.
 Station stations [NUM_OF_STATIONS] = {
     Station { "Station 1", 8, DefaultReadings, {}, false},
-    Station { "Station 2", 10, DefaultReadings, {} , false}
+    Station { "Station 2", 9, DefaultReadings, {} , false}
 };
 
 // pointers to cycle through stations and the menu 
@@ -421,11 +426,16 @@ byte* convertInt16ToBytes(uint16_t theInt) {
     return converter.theBytes;
 }
 
-// Purpose: data for all stations to the DB 
+// Purpose: send data for all stations to the DB 
+
+#define DB_ADDRESS 7
+
 void storeSnapshots() {
-    for (int i = 0; i < NUM_OF_STATIONS; i ++) {
+    for (uint8_t i = 0; i < NUM_OF_STATIONS; i ++) {
         Station* station = &stations[i];
-        Wire.beginTransmission(9);
+        Wire.beginTransmission(DB_ADDRESS);
+        //write slave address as the unique identifier for the station
+        Wire.write(station.address);
 
         // write float values in sequence of 4 to DB 
         Wire.write(convertFloatToBytes(station -> readings.temperature), 4);
@@ -441,6 +451,18 @@ void storeSnapshots() {
         Wire.endTransmission();
     }
 
+}
+/*
+PURPOSE - receives all of the predictions for each of the configured weather stations,
+distributes them appropriately based on slave address which is read back in.
+
+CORRECTION - Do this only for a certain ID in each time slot, not all of them. May want to introduce a button
+for each station which calls this function directly.
+
+Need to keep track of cu
+*/
+void receiveAndDistributePredictions () {
+    //begin transmission with DB 
 }
 
 // PURPOSE: polls buttons on non-interrupt enabled pins
@@ -491,8 +513,14 @@ void loop () {
     // make a request to receive data snapshot on regular interval
     // todo: for now clearing previous entries 
     if (currentTime - lastRequestTime >= requestDelay) {
-        getSnapshots();                    
+        getSnapshots();
+        storeSnapshots();                 
         lastRequestTime = currentTime;
+    }
+
+    if (currentTime - lastPredictionTime >= predictionDelay) {
+        receiveAndDistributePredictions();
+        lastPredictionTime = currentTime;
     }
 
     // set buttons states based on press events, wrapped in debouncer
