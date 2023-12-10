@@ -53,7 +53,6 @@ struct Prediction {
     String day; // day predicted.
     float predictedTemperature; // temperature predicted for day.
     char summary[25]; // summary of weather conditions from chatGPT API, max 25 characters.
-
 };
 
 // type casted enum class to uint8 to conserve memory and introduce better type safety 
@@ -111,7 +110,6 @@ Station stations [NUM_OF_STATIONS] = {
     Station { "Station 2", 10, DefaultReadings, {} , false}
 };
 
-
 // pointers to cycle through stations and the menu 
 uint8_t currentStationPtr = 0;
 uint8_t currentMenuPtr = 0;
@@ -150,7 +148,7 @@ void createIcons() {
         B01110,
         B00000,
     };
-    // simple exclamation mark.
+    // exclamation mark
     byte error[8] = {
         B00000,
         B01110,
@@ -239,7 +237,6 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
         // weekly predictions
         lcd.print("...");
     }
-
 }
 
 #define SCROLL_DELAY 200
@@ -266,8 +263,7 @@ void scrollOff(char* displayString, int displayStringLength, Station* station, i
         lcd.print(substr);
         
         delay(SCROLL_DELAY);
-    }
-          
+    }     
 
     // finally display output as is
     lcd.clear();
@@ -307,7 +303,6 @@ void setup () {
 
     printCurrentScreen(3, 0); // print the current screen with the station at the top 5 from the left, and the menu at the bottom 0.
 }
-
 
 void switchStation() {
     lcd.clear(); 
@@ -396,7 +391,6 @@ void getSnapshots() {
             }
         }
 
-
         // case for float readings, take next 4 bytes and read them to station struct  
         station -> readings.temperature = convertBytesToFloat(&currentByte, bytes);
         station -> readings.humidity = convertBytesToFloat(&currentByte, bytes);
@@ -412,9 +406,8 @@ void getSnapshots() {
     }
 }
 
-//=========== utility functions for storeSnapshots() ======= //
-
-// ! would have used a single generic function for below with type checking but Arduino C++ deprecates the use of (type_id) due to runtime constraints. !//
+// ! would have used a single generic function for below functions with type checking 
+// but Arduino C++ deprecates the use of (type_id) due to runtime constraints. !
 
 byte* convertFloatToBytes(float theFloat) {
     FloatToByteConverter converter;
@@ -449,7 +442,6 @@ void storeSnapshots() {
     }
 
 }
-
 
 // PURPOSE: polls buttons on non-interrupt enabled pins
 void pollButtons() {
@@ -492,8 +484,6 @@ void completeActionsFromButtonStates() {
     i++;
   }
 }
-
-
 
 void loop () {
     currentTime = millis();
