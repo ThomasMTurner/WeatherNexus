@@ -81,11 +81,20 @@ enum class SkyCondition : uint8_t {
 // =================  stores readings for a Station  ======================= //
 char* currentDisplayString;
 
-
 #define NUM_OF_READINGS 5
-const char* readingNames[NUM_OF_READINGS - 1] = {"Temperature: ", "Humidity: ", "Pressure: ", "Illuminance: "};
-const char* units[NUM_OF_READINGS - 1] = {"C", "%", "K", "Lux"};
 
+struct Reading {
+  char* readingName;
+  char* unit;
+};
+
+// sky condition isnt a standard unit so we dont include it here
+const Reading readings[NUM_OF_READINGS-1] = {
+  Reading { .readingName = "Temperature",        .unit = "%"   },
+  Reading { .readingName = "Humidity",           .unit = "K"   },
+  Reading { .readingName = "Colour Temperature", .unit = "K"   },
+  Reading { .readingName = "Illuminance",        .unit = "Lux" }
+};
 
 struct Readings {
     float humidity;
@@ -219,7 +228,7 @@ void printCurrentScreen (int stationX = 3, int menuX = 0) {
     lcd.clear();
     Station* station = &stations[currentStationPtr];
     //modified to make copy of name due to type conflicts.
-    char* readingName = strdup(readingNames[currentMenuPtr]);
+    char* readingName = strdup(readings[currentMenuPtr].readingName);
     //case of printing sensor data
     if (currentMenuPtr <= 4) {
         // ======= TO DO: display error if readings not available ========= //
@@ -252,7 +261,7 @@ void printCurrentScreen (int stationX = 3, int menuX = 0) {
         
 
         //====== create entire display string, store its length, reposition cursor and store display string globally for scrollOff() functionality =======//
-        char* displayString = strcat(strcat(readingName, reading), units[currentMenuPtr]);
+        char* displayString = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit);
         currentDisplayString = displayString;
         int displayStringLength = strlen(displayString);
         lcd.setCursor(menuX, 1);
@@ -428,21 +437,26 @@ void getSnapshots () {
         int currentByte = 0;
         byte bytes[NUM_OF_REQUIRED_BYTES] = {};
 
+        if (Wire.available()){
+            bytes[0] = Wire.read();
+         }
+        
+        // ===== check if readings are present ==== //
+        if (bytes[0] == 0) {
+            station -> isAvailable = false;
+            continue;
+        }
+        
+        station -> isAvailable = true;
+        currentByte ++;
+
         //===== read all available bytes directly into initialised byte array ==== //
-        for (int i = 0; i < NUM_OF_REQUIRED_BYTES; i ++) {
+        for (int i = 1; i < NUM_OF_REQUIRED_BYTES; i ++) {
             if (Wire.available()){
                 bytes[i] = Wire.read();
             }
         }
 
-        // ===== cases for PROTOCOL (1) ==== //
-        if (bytes[currentByte] == 0) {
-            station -> isAvailable = false;
-            return;
-        }
-
-        station -> isAvailable = true;
-        currentByte ++;
 
         //========== case for float readings, take next 4 bytes and read them to station struct  ========= //
         station -> readings.temperature = convertBytesToFloat(&currentByte, bytes);
