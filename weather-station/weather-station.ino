@@ -174,6 +174,7 @@ void sendInt16(uint16_t reading) {
 // ==============================================================
 
 void sendAllReadings() {
+  Serial.println("Readings Requested");
   if (!readings.present) {
     Wire.write(0);
     return;
@@ -197,5 +198,25 @@ void loop() {
   updateHumidity();
   updateSkyReadings();
 
-  delay(5000);
+  Serial.println("-------------------");
+
+  Serial.print("Available: ");
+  Serial.println(readings.present);
+  
+  Serial.print("Temperature: ");
+  Serial.println(readings.temperature);
+  
+  Serial.print("Humidity: ");
+  Serial.println(readings.humidity);
+  
+  Serial.print("Colour Temperature: ");
+  Serial.println(readings.colourTemperature);
+  
+  Serial.print("Illuminance: ");
+  Serial.println(readings.illuminance);
+  
+  Serial.print("Sky Condition: ");
+  Serial.println((int) readings.skyCondition);
+  
+  delay(10000);
 }
