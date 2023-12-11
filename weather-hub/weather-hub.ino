@@ -416,11 +416,11 @@ void setConditionsForMenu() {
     //this method as opposed to accessing by index for memory safety, and also to deal with different dtypes of readings.
     switch (currentMenuPtr) {
         case 0:
-            float currentReading = currentReadings -> humidity;
-            condition = setConditionForHumidity(currentReading);
+            float currentReading = currentReadings -> temperature;
+            condition = setConditionForTemperature(currentReading);
             break;
         case 1:
-            float currentReading = currentReadings -> temperature;
+            float currentReading = currentReadings -> humidity;
             condition = setConditionForHumidity(currentReading);
             break;
         case 2:
