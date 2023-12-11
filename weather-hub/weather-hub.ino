@@ -588,7 +588,7 @@ void pollButtons() {
 }
 
 // PURPOSE: calls the appropriate functions based on what button was pressed
-//          only one action can be made each time completeActionsFromButtonStates is caleld
+//          only one action can be made each time completeActionsFromButtonStates is called
 void completeActionsFromButtonStates() {
   int i = 0;
   bool actionMade = false;
