@@ -55,7 +55,7 @@ unsigned long currentTime;
 // holds weather predictions for each weekday from Python time series model
 struct Prediction {
     uint8_t id;
-    String day; // day predicted.
+    char day[10]; // day predicted.
     float predictedTemperature; // temperature predicted for day.
     //char summary[25]; // summary of weather conditions from chatGPT API, max 25 characters.
 };
@@ -82,7 +82,7 @@ const Reading readings[NUM_OF_READINGS] = {
     Reading { .readingName = "Temperature: ",           .unit = "C"   },
     Reading { .readingName = "Colour Temperature: ",    .unit = "K"   },
     Reading { .readingName = "Illuminance: ",           .unit = "Lux" },
-    Reading { .readingName = "Predicted Temperature: ",   .unit = "C"  }
+    Reading { .readingName = "Average predicted temperature for tomorrow: ",   .unit = "C"  }
 };
 
 struct Readings {
@@ -95,10 +95,10 @@ struct Readings {
 
 // todo: revert. modified default readings for UI testing.
 struct Readings DefaultReadings = {
-    .humidity          = 10,
+    .humidity          = 50,
     .temperature       = 15,
-    .colourTemperature = 10,
-    .illuminance       = 10,
+    .colourTemperature = 4000,
+    .illuminance       = 700,
     .skyCondition      = SkyCondition :: NIGHT
 };
 
@@ -113,8 +113,8 @@ struct Station {
 #define NUM_OF_STATIONS 2
 //I2C address should increment up from 8.
 Station stations [NUM_OF_STATIONS] = {
-    Station { "Station 1", 8, DefaultReadings, 12.0, false},
-    Station { "Station 2", 9, DefaultReadings, 15.0 , false}
+    Station { "Station 1", 8, DefaultReadings, {1, "Wednesday", 12.0}, false},
+    Station { "Station 2", 9, DefaultReadings, {2, "Wednesday", 12.0} , false}
 };
 
 // pointers to cycle through stations and the menu 
@@ -194,13 +194,9 @@ void printIcon(Station* station) {
 // PURPOSE: logic to print out full screen state depending on values of currentStationPtr and currentMenuPtr 
 void printCurrentScreen(int stationX = 3, int menuX = 0) {
     lcd.clear();
+    bool showingPrediction;
     
     Station* station = &stations[currentStationPtr];
-   
-    char* readingName = strdup(readings[currentMenuPtr].readingName); // modified to make copy of name due to type conflicts.
-
-    // if currentMenuPtr <= 3 then we print sensor data
-    if (currentMenuPtr <= 3) { 
         // todo: display error if readings not available
         
         char reading[6];
@@ -220,9 +216,11 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
                 break;
             case 4:
                 dtostrf(station -> prediction.predictedTemperature, 5, 1, reading);
+                showingPrediction = true;
                 break;
             // no case for 4 since icon is displayed alongside station name
         }
+
 
         // display station name on lcd
         lcd.setCursor(stationX, 0);
@@ -234,18 +232,26 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
         delay(50);
         printIcon(station);
         
-        char* displayString = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit); // create the string for the reading with its name, value and units
-        currentDisplayString = displayString;
+        char* readingName;
+
+        if (!showingPrediction) {
+            readingName = strcat(strdup(readings[currentMenuPtr].readingName), station -> prediction.day);
+        }
+        else {
+            readingName = strdup(readings[currentMenuPtr].readingName);
+        }
+
+        
+        char* displayString  = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit); // create the string for the reading with its name, value and units
+
+
+        currentDisplayString = displayString; //set global display string
         
 
         // display displayString on the bottom row of lcd
         lcd.setCursor(menuX, 1);
         delay(50);
         lcd.print(displayString);
-    } else {
-        // weekly predictions
-        lcd.print("...");
-    }
 }
 
 #define SCROLL_DELAY 200
@@ -430,14 +436,17 @@ void setConditionsForMenu() {
             break;
         case 1:
             Serial.println("Checking temperature now");
-            condition = setConditionForTemperature(currentReadings -> temperature);
+            //condition = setConditionForTemperature(currentReadings -> temperature);
+            condition = 1;
             break;
         case 2:
             Serial.println("Checking colour temp");
-            condition = setConditionForColourTemperature(currentReadings -> colourTemperature);
+            //condition = setConditionForColourTemperature(currentReadings -> colourTemperature);
+            condition = 0;
             break;
         case 3:
-            condition = setConditionForIlluminance(currentReadings -> illuminance);
+            //condition = setConditionForIlluminance(currentReadings -> illuminance);
+            condition = 2;
             break;
         
     }
@@ -660,6 +669,7 @@ void loop () {
     // make a request to receive data snapshot on regular interval
     // todo: for now clearing previous entries 
     
+
     if (currentTime - lastRequestTime >= requestDelay) {
         getSnapshots();
         //emergency condition checked each time new recordings made.
