@@ -77,9 +77,7 @@ void updateSkyReadings() {
   uint32_t sum = c;
   float red, green, blue;
   if (sum == 0) {
-    red = 0;
-    green = 0; 
-    blue = 0;
+    red = green = blue = 0;
   } else {
     red = (float)r / sum;
     green = (float)g / sum;
