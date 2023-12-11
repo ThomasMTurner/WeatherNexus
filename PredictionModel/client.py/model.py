@@ -18,17 +18,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import load_model
 
 
-'''
-Need to make the following changes:
-
-Change read("test.csv") to loop through all training sets in directory training_sets, use this as X (to train modelN) - 
-that is for each station - train a different model on its corresponding training set.
- 
-Modify get_predictions() as needed to predict sequence on the appropriate model.
-'''
-
-
-
 
 df = pd.read_csv('mpi_roof.csv', encoding='ISO-8859-1') #reading in temperature data from a random dataset in order to train model
 df = df[5::6] #this removes every element in the dataset that is not recorded on the hour
