@@ -42,7 +42,7 @@ Button buttons[4] = {
 
 // storing times for snapshot requests and polling  
 unsigned long lastRequestTime = 0;
-const int requestDelay = 1000; // in ms
+const int requestDelay = 10000; // in ms
 
 unsigned long lastPollTime = 0;
 const int pollDelay = 200; // in ms
@@ -78,8 +78,8 @@ struct Reading {
 
 // sky condition isnt a numerical reading so we dont include it here
 const Reading readings[NUM_OF_READINGS-1] = {
-  Reading { .readingName = "Temperature",        .unit = "%"   },
-  Reading { .readingName = "Humidity",           .unit = "K"   },
+  Reading { .readingName = "Humidity",           .unit = "%"   },  
+  Reading { .readingName = "Temperature",        .unit = "C"   },
   Reading { .readingName = "Colour Temperature", .unit = "K"   },
   Reading { .readingName = "Illuminance",        .unit = "Lux" }
 };
@@ -94,10 +94,10 @@ struct Readings {
 
 // todo: revert. modified default readings for UI testing.
 struct Readings DefaultReadings = {
-    .humidity          = 5,
-    .temperature       = 5,
-    .colourTemperature = 5,
-    .illuminance       = 5,
+    .humidity          = 10,
+    .temperature       = 15,
+    .colourTemperature = 10,
+    .illuminance       = 10,
     .skyCondition      = SkyCondition :: NIGHT
 };
 
@@ -206,10 +206,10 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
         // convert each reading to a string
         switch (currentMenuPtr) {
             case 0:
-                dtostrf(station -> readings.temperature, 5, 1, reading);
+                dtostrf(station -> readings.humidity, 5, 1, reading);
                 break;
             case 1:
-                dtostrf(station -> readings.humidity, 5, 1, reading);
+                dtostrf(station -> readings.temperature, 5, 1, reading);
                 break;
             case 2:
                 sprintf(reading, "%d" , station -> readings.colourTemperature);
@@ -312,15 +312,15 @@ void setup () {
 void switchStation() {
     lcd.clear(); 
     currentStationPtr = (currentStationPtr + 1) % NUM_OF_STATIONS; // wrap to number of stations so we don't scroll off.
-    printCurrentScreen();
     setConditionsForMenu();
+    printCurrentScreen();
 }
 
 void switchMenu() {
     lcd.clear();
     currentMenuPtr = (currentMenuPtr + 1) % (NUM_OF_READINGS - 1); // wrap to number of readings (-1 as we omitted sky condition).
-    printCurrentScreen();
     setConditionsForMenu();
+    printCurrentScreen();
 }
 
 // PURPOSE: turns on the alarm if any of the station readings are extreme
@@ -338,11 +338,13 @@ void checkForEmergency() {
     //Using pow for efficiency compared to sqrt
     //evidence suggest 32 degrees celcius is critical wet bulb temperature.
     //can change this if we have enough free memory to store temp and humidity so we dont have to keep referencing them.
-    float T_w = (station -> readings.temperature) * atan(0.151977 * pow((station -> readings.humidity) + 8.313659), 0.5)
-     + 0.00391838 * pow((station -> readings.humidity), 1.5) * atan((station -> readings.humidity) * 0.023101) 
-     - atan((station -> readings.humidity) - 1.676331) + 
-     atan((station -> readings.temperature) + (station -> readings.humidity) )
-      - 4.686035;
+    float T_w = (station -> readings.temperature) * atan(0.151977 * pow((station -> readings.humidity) + 8.313659, 0.5))
+    + (0.00391838 * pow ((station -> readings.humidity), 1.5) * atan(0.023101 * (station -> readings.humidity)))
+    - atan((station -> readings.humidity) - 1.676331) + atan((station -> readings.temperature) + (station -> readings.humidity))
+    - 4.686035;
+
+    Serial.println("Wet bulb index: ");
+    Serial.println(T_w);
 
     // an emergency is when the temperature is less than -5 or greater than 35 degrees celsius
     // can opt to modify the low temperature reading, but evidence is conflicting to the critical low wet-bulb limit.
@@ -361,13 +363,13 @@ uint8_t setConditionForTemperature (float currentReading) {
     if (currentReading < 0) {
         return 2;
     }
-    else if (0 <= currentReading <= 10) {
+    else if (0 < currentReading < 10) {
         return 1;
     }
-    else if (10 < currentReading <= 20) {
+    else if (10 < currentReading < 20) {
         return 0;
     }
-    else if (20 < currentReading <= 30) {
+    else if (20 < currentReading < 30) {
         return 1; 
     }
     else if (currentReading > 30) {
@@ -413,30 +415,31 @@ void setConditionsForMenu() {
     for (uint8_t i = 0; i < 3; i++) {
         digitalWrite(conditionPins[i], LOW);
     }
+
+    Serial.println("Call to check conditions");
+
     //this method as opposed to accessing by index for memory safety, and also to deal with different dtypes of readings.
     switch (currentMenuPtr) {
         case 0:
-            float currentReading = currentReadings -> temperature;
-            condition = setConditionForTemperature(currentReading);
+            Serial.println("Checking humidity now");
+            condition = setConditionForHumidity(currentReadings -> humidity);
             break;
         case 1:
-            float currentReading = currentReadings -> humidity;
-            condition = setConditionForHumidity(currentReading);
+            Serial.println("Checking temperature now");
+            condition = setConditionForTemperature(currentReadings -> temperature);
             break;
         case 2:
-            uint16_t currentReading = currentReadings -> colourTemperature;
-            condition = setConditionForColourTemperature(currentReading);
+            Serial.println("Checking colour temp");
+            condition = setConditionForColourTemperature(currentReadings -> colourTemperature);
             break;
         case 3:
-            uint16_t currentReading = currentReadings -> illuminance;
-            condition = setConditionForIlluminance(currentReading);
+            condition = setConditionForIlluminance(currentReadings -> illuminance);
             break;
-        case 4:
-            break;
+        
     }
 
-    //display current condition for menu.
-    digitalWrite(conditionPins[condition], HIGH)
+    digitalWrite(conditionPins[condition], HIGH);
+
 
 }
 
@@ -446,16 +449,22 @@ void setConditionsForMenu() {
 
 union FloatToByteConverter {
     float theFloat;
-    byte theBytes[4];
+    uint8_t theBytes[4];
 };
 
-float convertBytesToFloat(int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
+float convertBytesToFloat(int currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
     FloatToByteConverter converter;
 
-    for (int i = 0; i < 4; i ++) {
-        converter.theBytes[i] = bytes[*currentByte];
-        currentByte ++;
-    }
+    Serial.println("Currently on byte index: ");
+    Serial.println(currentByte);
+
+    converter.theBytes[0] = bytes[currentByte];
+    currentByte++;
+    converter.theBytes[1] = bytes[currentByte];
+    currentByte++;
+    converter.theBytes[2] = bytes[currentByte];
+    currentByte++;
+    converter.theBytes[3] = bytes[currentByte];
     
     return converter.theFloat;
 }
@@ -465,14 +474,11 @@ union Int16ToByteConverter {
     byte theBytes[2];
 };
 
-uint16_t convertBytesToInt16 (int *currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
+uint16_t convertBytesToInt16 (int currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
     Int16ToByteConverter converter;
-
-    for (int i = 0; i < 2; i ++) {
-        converter.theBytes[i] = bytes[*currentByte];
-        currentByte ++;
-    }
-    
+    converter.theBytes[0] = bytes[currentByte];
+    currentByte ++;
+    converter.theBytes[1] = bytes[currentByte];
     return converter.theInt;
 }
 
@@ -500,7 +506,6 @@ void getSnapshots() {
         }
         
         station -> isAvailable = true;
-        currentByte ++;
 
         // read all available bytes directly into initialised byte array 
         for (int i = 1; i < NUM_OF_REQUIRED_BYTES; i ++) {
@@ -509,16 +514,34 @@ void getSnapshots() {
             }
         }
 
-        // case for float readings, take next 4 bytes and read them to station struct  
-        station -> readings.temperature = convertBytesToFloat(&currentByte, bytes);
-        station -> readings.humidity = convertBytesToFloat(&currentByte, bytes);
+        // case for float readings, take next 4 bytes and read them to station struct
+        currentByte ++;
+        station -> readings.temperature = convertBytesToFloat(currentByte, bytes);
+        currentByte += 3;
+   
+
+        currentByte ++;
+        station -> readings.humidity = convertBytesToFloat(currentByte, bytes);
+        currentByte += 3;
 
         // case for uint16_t readings, takes next two bytes and reads them to station struct 
-        station -> readings.colourTemperature = convertBytesToInt16(&currentByte, bytes);
-        station -> readings.illuminance = convertBytesToInt16(&currentByte, bytes);
+        currentByte ++;
+        station -> readings.colourTemperature = convertBytesToInt16(currentByte, bytes);
+        currentByte++;
+
+        currentByte ++;
+        station -> readings.illuminance = convertBytesToInt16(currentByte, bytes);
+        currentByte++;
 
         // case for value of skyCondition enum, casts byte to uint8_t 
+        currentByte ++;
         station -> readings.skyCondition =  static_cast<SkyCondition>(bytes[currentByte]);
+
+        Serial.println("Here are the transmitted bytes: ");
+        for (int i = 0; i < 14; i ++){
+            Serial.println("Byte received: ");
+            Serial.println(bytes[i]);
+        }
 
         Wire.endTransmission();
     }
@@ -621,12 +644,18 @@ void completeActionsFromButtonStates() {
   }
 }
 
+bool FIRST_LOOP = true;
+
 void loop () {
     currentTime = millis();
-    //initial call to set conditions, is called again whenever station state or menu state changes.
-    setConditionsForMenu();
+    //initial call to set conditions, only on first loop
+    if (FIRST_LOOP) {
+        setConditionsForMenu();
+        FIRST_LOOP = false;
+    }
     // make a request to receive data snapshot on regular interval
     // todo: for now clearing previous entries 
+    
     if (currentTime - lastRequestTime >= requestDelay) {
         getSnapshots();
         //emergency condition checked each time new recordings made.
@@ -634,6 +663,7 @@ void loop () {
         storeSnapshots();                 
         lastRequestTime = currentTime;
     }
+    
 
     // check for emergency condition
 
