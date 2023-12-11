@@ -72,9 +72,11 @@ model1 = load_model('model1/')
 
 
 df1 = pd.read_csv('training_sets/station1.csv', encoding='UTF-8') #assuming their is only one station currently but easily expendable 
-df1['Date Time'] = df1.year + ' ' + df1.month + ' ' + df1.day + ' ' + df1.hour
-df1['Date Time'] = pd.to_datetime(df1['Date Time'], format = '%Y %M %d %h')
+df1['Date Time'] = df1.year + ' ' + df1.month + ' ' + df1.day + ' ' + df1.hour + ' ' + df1.minute + ' ' df1.second
+df1['Date Time'] = pd.to_datetime(df1['Date Time'], format = '%Y %M %d %h %m %s')
 new_temp = df1['temperature']
+row_count = len(df1)
+
 
 # Define the number of future steps you want to predict
 NUM_OF_FUTURE_STEPS = 1
@@ -88,8 +90,7 @@ NUM_OF_STATIONS = 1 #len([f for f in os.listdir("training_sets") if os.path.isfi
 
 StationPrediction = namedtuple('StationPrediction', ['id', 'predictions'])
 
-#modified to return a namedtuple containing each station ID and its future temperatures.
-def get_predictions ():
+def get_predictions1():
     future_predictions = []
     for i in range(NUM_OF_STATIONS):
         # Recursively predict the next temperature
@@ -113,6 +114,46 @@ def get_predictions ():
         
     return future_predictions
 
+def get_predictions2():
+    future_predictions = []
+    for i in range(NUM_OF_STATIONS):
+        # Recursively predict the next temperature
+        for _ in range(NUM_OF_FUTURE_STEPS):
+            # Reshape the last sequence for prediction
+            sequence_for_prediction = last_sequence.reshape((1, window_size, 1))
+            
+            # Predict the next temperature
+            next_temperature_pred = model2.predict(sequence_for_prediction).flatten()[0]
+            
+            # Append the prediction to the list of future temperatures
+            future_temperatures.append(next_temperature_pred)
+            
+            # Update the sequence with the predicted value
+            last_sequence = np.append(last_sequence[1:], next_temperature_pred)
+
+        #return result
+        future_predictions.append(StationPrediction(i, future_temperatures))
+
+
+if row_count > 2000: #if the data from the weather stations is large enough train a new model with that data and use it to predict future temperatures. 
+    model2 = Sequential()
+    model2.add(InputLayer((4,1)))
+    model2.add(LSTM(64))
+    model2.add(Dense(8, 'relu'))
+    model2.add(Dense(1, 'linear'))
+
+    X, _ = df_to_X_y(new_temp, window_size)
+
+    cp1 = ModelCheckpoint('model2/', save_best_only=True) #saves the best model 
+    model2.compile(loss=MeanSquaredError(), optimizer = Adam(learning_rate=0.0001), metrics=[RootMeanSquaredError()]) 
+    model2.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, callbacks=[cp])
+
+    get_predictions2()
+else: #otherwise use exisiting model1 which is data from a weather station in Germany to predict the future temperatures. 
+    get_predictions1()
+
+
+#modified to return a namedtuple containing each station ID and its future temperatures.
 
 def print_predictions ():
     # Display the future temperatures

@@ -27,12 +27,14 @@ while True:
                         month = parts[3].strip()
                         day = parts[4].strip()
                         hour = parts[5].strip()
-                        temperature = float(parts[6].strip())
+                        minute = parts[6].strip()
+                        second = parts[7].strip()
+                        temperature = float(parts[8].strip())
                         #now add these values to the training data for station (id)
                         #id - 7 since addresses identifier increments up from 8.. (8, 9, 10...)
                         with open(f'training_sets/station{id - 7}.csv', 'a', newline='') as csvfile:
                             writer = csv.writer(csvfile)
-                            writer.writerow([year, month, day, hour, temperature])
+                            writer.writerow([year, month, day, hour, minute, second, temperature])
                     except ValueError:
                         print("Invalid temperature value.")
 
