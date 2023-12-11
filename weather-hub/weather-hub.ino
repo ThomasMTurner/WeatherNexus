@@ -321,8 +321,20 @@ void switchMenu() {
     printCurrentScreen();
 }
 
-bool isEmergency (float readings[]){
-    Serial.println("Nothing for now");
+// PURPOSE: turns on the alarm if any of the station readings are extreme
+void checkForEmergency() {
+  int i = 0;
+  
+  while (!alarmFlag && i < NUM_OF_STATIONS) {
+    Station* station = &stations[i];
+
+    if (station->readings.temperature < -5 || station->readings.temperature > 35) {
+      alarmFlag = true;
+      tone(ALARM_PIN, alarmTone); 
+    }
+
+    i++;
+  }
 }
 
 int getCondition (float readings[]){
@@ -435,7 +447,7 @@ void storeSnapshots() {
         Station* station = &stations[i];
         Wire.beginTransmission(DB_ADDRESS);
         //write slave address as the unique identifier for the station
-        Wire.write(station.address);
+        Wire.write(station->address);
 
         // write float values in sequence of 4 to DB 
         Wire.write(convertFloatToBytes(station -> readings.temperature), 4);
@@ -499,6 +511,7 @@ void completeActionsFromButtonStates() {
               break;
           case 3:
               noTone(ALARM_PIN);
+              alarmFlag = false;
               break;
       }
       actionMade = true;
@@ -530,5 +543,6 @@ void loop () {
     }
 
     completeActionsFromButtonStates();
-    // todo: if (emergency) and (!alarmFlag) then set alarm flag to true and play alarm. =====//
+
+    checkForEmergency();
 }
