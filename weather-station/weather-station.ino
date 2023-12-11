@@ -68,15 +68,16 @@ void updateSkyReadings() {
 
   readings.colourTemperature = tcs.calculateColorTemperature_dn40(r, g, b, c);
   readings.illuminance = tcs.calculateLux(r, g, b);  
-
+  
   if (readings.illuminance < 1) {
     readings.skyCondition = SkyCondition::NIGHT;
     return;
   }
-  
+
+  // find the hue of the colour from the sensor
   uint32_t sum = c;
   float red, green, blue;
-  if (sum == 0) {
+  if (sum == 0) { // cannot divide by 0
     red = green = blue = 0;
   } else {
     red = (float)r / sum;
@@ -99,7 +100,7 @@ void updateSkyReadings() {
   }
   
   hue = hue * 60;
-
+  // if the colour is blue
   if (hue > 140 && hue < 245) {
     readings.skyCondition = SkyCondition::SUNNY;
   } else if (readings.illuminance < 2000) {
