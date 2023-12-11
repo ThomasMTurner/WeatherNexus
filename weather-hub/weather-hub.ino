@@ -301,6 +301,8 @@ void setup () {
     lcd.setBacklight(1); 
 
     printCurrentScreen(3, 0); // print the current screen with the station at the top 5 from the left, and the menu at the bottom 0.
+
+    setConditionsForMenu();
 }
 
 void switchStation() {
@@ -590,7 +592,6 @@ void completeActionsFromButtonStates() {
               switchStation();
               break;
           case 2:
-              // todo
               Station* station = &stations[currentStationPtr];
               int displayStringLength = strlen(currentDisplayString);
               if (displayStringLength > 16) {
@@ -608,15 +609,9 @@ void completeActionsFromButtonStates() {
   }
 }
 
-bool FIRST_LOOP = true;
-
 void loop () {
     currentTime = millis();
-    //initial call to set conditions, only on first loop
-    if (FIRST_LOOP) {
-        setConditionsForMenu();
-        FIRST_LOOP = false;
-    }
+
     // make a request to receive data snapshot on regular interval
     if (currentTime - lastRequestTime >= requestDelay) {
         getSnapshots();
