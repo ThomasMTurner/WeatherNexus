@@ -1,5 +1,6 @@
 #include <Adafruit_LiquidCrystal.h>
 #include <Wire.h>
+#include <math.h>
 
 /*
 
@@ -232,7 +233,6 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
         char* displayString = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit); // create the string for the reading with its name, value and units
         currentDisplayString = displayString;
         
-        int displayStringLength = strlen(displayString); // todo: we dont use this anymore
 
         // display displayString on the bottom row of lcd
         lcd.setCursor(menuX, 1);
@@ -313,15 +313,19 @@ void switchStation() {
     lcd.clear(); 
     currentStationPtr = (currentStationPtr + 1) % NUM_OF_STATIONS; // wrap to number of stations so we don't scroll off.
     printCurrentScreen();
+    setConditionsForMenu();
 }
 
 void switchMenu() {
     lcd.clear();
     currentMenuPtr = (currentMenuPtr + 1) % (NUM_OF_READINGS - 1); // wrap to number of readings (-1 as we omitted sky condition).
     printCurrentScreen();
+    setConditionsForMenu();
 }
 
 // PURPOSE: turns on the alarm if any of the station readings are extreme
+// TO DO: checks all stations at once, may want to modify to pinpoint station with emergency condition.
+// Above is possibly remediated by the user simply checking conditions for all available stations.
 void checkForEmergency() {
   int i = 0;
 
@@ -329,8 +333,20 @@ void checkForEmergency() {
   while (!alarmFlag && i < NUM_OF_STATIONS) {
     Station* station = &stations[i];
 
+    //optional emergency condition for wet-bulb temperature using the Stull formula
+    //Note: formula simply models evaporative cooling.
+    //Using pow for efficiency compared to sqrt
+    //evidence suggest 32 degrees celcius is critical wet bulb temperature.
+    //can change this if we have enough free memory to store temp and humidity so we dont have to keep referencing them.
+    float T_w = (station -> readings.temperature) * atan(0.151977 * pow((station -> readings.humidity) + 8.313659), 0.5)
+     + 0.00391838 * pow((station -> readings.humidity), 1.5) * atan((station -> readings.humidity) * 0.023101) 
+     - atan((station -> readings.humidity) - 1.676331) + 
+     atan((station -> readings.temperature) + (station -> readings.humidity) )
+      - 4.686035;
+
     // an emergency is when the temperature is less than -5 or greater than 35 degrees celsius
-    if (station->readings.temperature < -5 || station->readings.temperature > 35) {
+    // can opt to modify the low temperature reading, but evidence is conflicting to the critical low wet-bulb limit.
+    if (station -> readings.temperature < -10 || T_w >= 32) {
       alarmFlag = true;
       tone(ALARM_PIN, alarmTone); 
     }
@@ -339,9 +355,92 @@ void checkForEmergency() {
   }
 }
 
-int getCondition (float readings[]){
-    Serial.println("Nothing for now");
+
+//simple conditionals to check temperature safety.
+uint8_t setConditionForTemperature (float currentReading) {
+    if (currentReading < 0) {
+        return 2;
+    }
+    else if (0 <= currentReading <= 10) {
+        return 1;
+    }
+    else if (10 < currentReading <= 20) {
+        return 0;
+    }
+    else if (20 < currentReading <= 30) {
+        return 1; 
+    }
+    else if (currentReading > 30) {
+        return 2;
+    }
+    
 }
+
+//based on research for relative humidity scales and adverse health effects.
+uint8_t setConditionForHumidity (float currentReading) {
+    if (currentReading < 25) {
+        return 2;
+    }
+    else if (25 < currentReading < 40){
+        return 1;
+    }
+    else if (40 < currentReading < 60){
+        return 0;
+    }
+    else if (60 < currentReading < 80){
+        return 1;
+    }
+    else if (80 < currentReading < 100){
+        return 2;
+    }
+}
+
+uint8_t setConditionForColourTemperature (uint16_t currentReading) {
+    //..... nothing as of yet.
+}
+
+uint8_t setConditionForIlluminance (uint16_t currentReading) {
+    //..... nothing as of yet.
+}
+
+//outputs 0: green / good 1: yellow / moderate 2: red / bad
+
+void setConditionsForMenu() {
+    //first get the current menu's reading.
+    Readings* currentReadings = &stations[currentStationPtr].readings;
+    uint8_t condition;
+    //next clear all current LED outputs
+    for (uint8_t i = 0; i < 3; i++) {
+        digitalWrite(conditionPins[i], LOW);
+    }
+    //this method as opposed to accessing by index for memory safety, and also to deal with different dtypes of readings.
+    switch (currentMenuPtr) {
+        case 0:
+            float currentReading = currentReadings -> humidity;
+            condition = setConditionForHumidity(currentReading);
+            break;
+        case 1:
+            float currentReading = currentReadings -> temperature;
+            condition = setConditionForHumidity(currentReading);
+            break;
+        case 2:
+            uint16_t currentReading = currentReadings -> colourTemperature;
+            condition = setConditionForColourTemperature(currentReading);
+            break;
+        case 3:
+            uint16_t currentReading = currentReadings -> illuminance;
+            condition = setConditionForIlluminance(currentReading);
+            break;
+        case 4:
+            break;
+    }
+
+    //display current condition for menu.
+    digitalWrite(conditionPins[condition], HIGH)
+
+}
+
+
 
 #define NUM_OF_REQUIRED_BYTES 14 // number of bytes to expect from the weather station if readings are present
 
@@ -524,15 +623,21 @@ void completeActionsFromButtonStates() {
 
 void loop () {
     currentTime = millis();
-
+    //initial call to set conditions, is called again whenever station state or menu state changes.
+    setConditionsForMenu();
     // make a request to receive data snapshot on regular interval
     // todo: for now clearing previous entries 
     if (currentTime - lastRequestTime >= requestDelay) {
         getSnapshots();
+        //emergency condition checked each time new recordings made.
+        checkForEmergency();
         storeSnapshots();                 
         lastRequestTime = currentTime;
     }
 
+    // check for emergency condition
+
+    // make a request to receive predictions on regular interval
     if (currentTime - lastPredictionTime >= predictionDelay) {
         receiveAndDistributePredictions();
         lastPredictionTime = currentTime;
@@ -545,6 +650,4 @@ void loop () {
     }
 
     completeActionsFromButtonStates();
-
-    checkForEmergency();
 }
