@@ -103,7 +103,7 @@ void updateSkyReadings() {
   // if the colour is blue
   if (hue > 140 && hue < 245) {
     readings.skyCondition = SkyCondition::SUNNY;
-  } else if (readings.illuminance < 2000) {
+  } else if (readings.illuminance > 1000 && readings.illuminance < 5000) {
     readings.skyCondition = SkyCondition::OVERCAST;
   } else {
     readings.skyCondition = SkyCondition::UNRECOGNISED;
