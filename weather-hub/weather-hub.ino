@@ -324,10 +324,12 @@ void switchMenu() {
 // PURPOSE: turns on the alarm if any of the station readings are extreme
 void checkForEmergency() {
   int i = 0;
-  
+
+  // we only want the alarm to be turned on once so we use a while loop that ensures alarmFlag is false
   while (!alarmFlag && i < NUM_OF_STATIONS) {
     Station* station = &stations[i];
 
+    // an emergency is when the temperature is less than -5 or greater than 35 degrees celsius
     if (station->readings.temperature < -5 || station->readings.temperature > 35) {
       alarmFlag = true;
       tone(ALARM_PIN, alarmTone); 
