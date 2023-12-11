@@ -77,11 +77,12 @@ struct Reading {
 };
 
 // sky condition isnt a numerical reading so we dont include it here
-const Reading readings[NUM_OF_READINGS-1] = {
-  Reading { .readingName = "Humidity",           .unit = "%"   },  
-  Reading { .readingName = "Temperature",        .unit = "C"   },
-  Reading { .readingName = "Colour Temperature", .unit = "K"   },
-  Reading { .readingName = "Illuminance",        .unit = "Lux" }
+const Reading readings[NUM_OF_READINGS] = {
+    Reading { .readingName = "Humidity: ",              .unit = "%"   },  
+    Reading { .readingName = "Temperature: ",           .unit = "C"   },
+    Reading { .readingName = "Colour Temperature: ",    .unit = "K"   },
+    Reading { .readingName = "Illuminance: ",           .unit = "Lux" },
+    Reading { .readingName = "Predicted Temperature: ",   .unit = "C"  }
 };
 
 struct Readings {
@@ -105,15 +106,15 @@ struct Station {
     char stationName[20]; 
     int address; // holds I2C address
     Readings readings;
-    Prediction predictions[7];
+    Prediction prediction;
     bool isAvailable; // whether the station had readings present for the last snapshot request
 };
 
 #define NUM_OF_STATIONS 2
 //I2C address should increment up from 8.
 Station stations [NUM_OF_STATIONS] = {
-    Station { "Station 1", 8, DefaultReadings, {}, false},
-    Station { "Station 2", 9, DefaultReadings, {} , false}
+    Station { "Station 1", 8, DefaultReadings, 12.0, false},
+    Station { "Station 2", 9, DefaultReadings, 15.0 , false}
 };
 
 // pointers to cycle through stations and the menu 
@@ -217,6 +218,9 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
             case 3:
                 sprintf(reading, "%d", station -> readings.illuminance);
                 break;
+            case 4:
+                dtostrf(station -> prediction.predictedTemperature, 5, 1, reading);
+                break;
             // no case for 4 since icon is displayed alongside station name
         }
 
@@ -318,7 +322,7 @@ void switchStation() {
 
 void switchMenu() {
     lcd.clear();
-    currentMenuPtr = (currentMenuPtr + 1) % (NUM_OF_READINGS - 1); // wrap to number of readings (-1 as we omitted sky condition).
+    currentMenuPtr = (currentMenuPtr + 1) % NUM_OF_READINGS; // wrap to number of readings (-1 as we omitted sky condition).
     setConditionsForMenu();
     printCurrentScreen();
 }
