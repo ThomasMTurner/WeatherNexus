@@ -2,12 +2,10 @@
 #include <DS3231.h>
 #include <SD.h>
 
-
 // !! code assumes values are only read back currently to print predictions, can also modify this to allow history to display on UI !! //
 
 // useful constants //
 #define NUM_OF_STATIONS 1
-DS3231 rtc;
 File dataFile; //initialise dataFile
 
 // struct to hold predictions fed from Python time series model //
@@ -17,8 +15,6 @@ struct Prediction {
     uint8_t id;
     String day;
     float predictedTemperature;
-    //!! currently our Python script does not use chatGPT API to produce summary, modify this
-    // char summary[25];
 };
 
 #define NUM_OF_PREDICTIONS 2
@@ -34,9 +30,8 @@ struct RTC_Time {
     uint8_t second;
 };
 
+RTClib myRTC;
 RTC_Time currentTime;
-#define SD_PIN 2
-
 
 // stores all of the readings received by master //
 
@@ -85,14 +80,28 @@ uint16_t castBytesToInt16 (byte* bytes, int currentByte) {
 #define DB_ADDRESS 7
 
 void setup () {
-    //REMINDER: Python script should write predictions to serial over this baud rate
     Serial.begin(9600); // initialise serial monitor to read out Python predictions.
+
+    Serial.println("Starting");
+    
+    //REMINDER: Python script should write predictions to serial over this baud rate
     Wire.begin(DB_ADDRESS); // initialise I2C, join to DB address 7.
-    // rtc.begin(); // initialise RTC. Commented out for meantime as couldn't work out why not working
+
     Wire.onReceive(storeSnapshots); // handle receiving readings from master
     Wire.onRequest(sendPredictions); // handle sending predictions back to master
 
-    // TO DO: below set pins for RTC and SD card modules //
+    while (!Serial) {
+      ; // wait for serial port to connect. Needed for native USB port only
+    }
+
+    Serial.print("Initializing SD card...");
+    
+    if (!SD.begin(4)) {
+      Serial.println("initialization failed!");
+      while (1);
+    }
+
+    Serial.println("initialization done.");
 };
 
 
@@ -103,21 +112,16 @@ void sendSnapshotTempsToTrainingSet (Snapshot* snapshots) {
         //delimited by - to use split('-') in Python script to parse the command values.
         Serial.println("receive - " + String(snapshots[i].id) + " - " 
         + String(snapshots[i].timeRead.year) + " - "  + String(snapshots[i].timeRead.month) + " - " 
-        + String(snapshots[i].timeRead.day) + " - " + String(snapshots[i].timeRead.hour) + 
+        + String(snapshots[i].timeRead.day) + " - " + String(snapshots[i].timeRead.hour) +
+        " - " + String(snapshots[i].timeRead.minute) +  " - " + String(snapshots[i].timeRead.second) + 
         " - " + String(snapshots[i].temperature));
     }
 };
 
-
-// TO DO: below store snapshot on SD card. //
-void storeSnapshotsOnSD (Snapshot* snapshots) {
-    //error case, also initialises SD connection
-    if (!SD.begin(SD_PIN)){
-        return;
-    }
-    
+// store snapshot on SD card
+void storeSnapshotsOnSD (Snapshot* snapshots) {    
     //writes to file if already exists and creates new if doesn't (hence handles case of first write)
-  dataFile = SD.open("snapshots.txt", FILE_WRITE);
+    dataFile = SD.open("snapshots.txt", FILE_WRITE);
     if (dataFile) {
         for (int i = 0; i < NUM_OF_STATIONS; i++) {
             dataFile.print("ID: ");
@@ -144,26 +148,23 @@ void storeSnapshotsOnSD (Snapshot* snapshots) {
             dataFile.println(snapshots[i].timeRead.minute);
             dataFile.print("Second: ");
             dataFile.println(snapshots[i].timeRead.second);
-            dataFile.close();
         }
-        
     }
-
+    
+    dataFile.close();
 };
 
 
 //=========== PROTOCOL FOR REFERENCE ======== //
-
 // For as many stations as are configured
 // First 4 bytes is temperature reading (float)
 // Second 4 bytes is humidity reading (float)
 // Next 2 bytes is colourTemp (uint16_t)
 // Next 2 bytes is illuminance (uint16_t)
 // Last byte is skyCondition (uint8_t)
-
-// ======================= //
+// ========================================== //
 void storeSnapshots () {
-    Snapshot* snapshots[NUM_OF_STATIONS];
+    Snapshot snapshots[NUM_OF_STATIONS];
     for (int i = 0; i < NUM_OF_STATIONS; i ++) {
         int currentByte = 0;
         Snapshot snapshot;
@@ -176,15 +177,15 @@ void storeSnapshots () {
             snapshot.humidity = castBytesToFloat(Wire.read(), currentByte);
             snapshot.colourTemperature = castBytesToInt16(Wire.read(), currentByte);
             snapshot.illuminance = castBytesToInt16(Wire.read(), currentByte);
-            snapshot.skyCondition = <static_cast<uint8_t>(Wire.read());
+            snapshot.skyCondition = static_cast<uint8_t>(Wire.read());
             snapshot.timeRead = currentTime;
-        }
+        };
 
-        snapshots.push_back(snapshot);
+        snapshots[i] = snapshot;
     }
 
-    //send all of the temperature readings to model training sets
-    //need a training set for each of the station names.
+    // send all of the temperature readings to model training sets
+    // need a training set for each of the station names.
     sendSnapshotTempsToTrainingSet(snapshots);
     storeSnapshotsOnSD(snapshots);
 };
@@ -220,8 +221,8 @@ Prediction* getModelPredictions () {
         prediction = Serial.read();
 
         // Store prediction
-        predictions[i].day = day;
-        predictions[i].predictedTemperature = prediction;
+        predictions[i][j].day = day;
+        predictions[i][j].predictedTemperature = prediction;
 
         //cycle to new station
         if (i % NUM_OF_PREDICTIONS == 0) {
@@ -231,33 +232,33 @@ Prediction* getModelPredictions () {
     
 };
 
-// !!!! TO DO: I2C protocol to send our batch of predictions back over !!!!! //
-
 // MODIFICATION NEEDED: send only the batch for a particular station
-//Not sure how this is possible with the way I2C is set up.
-//Also, batches will be only for the next two days.
-
-void sendPredictions () {
+// Not sure how this is possible with the way I2C is set up.
+// Also, batches will be only for the next two days.
+void sendPredictions() {
     getModelPredictions();
     // Sends over I2C
     for (int i = 0; i < NUM_OF_STATIONS; i ++) {
         for (int j = 0; j < NUM_OF_PREDICTIONS; j ++) {
-            prediction* = &predictions[i][j];
+            Prediction* prediction = &predictions[i][j];
             Wire.write(prediction -> id);
-            Wire.write(prediction -> day);
-            Wire.write(prediction -> predictedTemperature);
+            Wire.write(prediction -> day.c_str());
+
+            BytesToFloat converter;
+            converter.f = prediction -> predictedTemperature;
+            Wire.write(converter.bytes, 4);
         }
     }
 };
 
-//main program loop just keeps updating the current time.
+// main program loop just keeps updating the current time.
 void loop () {
-    rtc.update();
+    DateTime now = myRTC.now();
     
-    currentTime.year = rtc.getYear();
-    currentTime.month = rtc.getMonth();
-    currentTime.day = rtc.getDay();
-    currentTime.hour = rtc.getHour();
-    currentTime.minute = rtc.getMinute();
-    currentTime.second = rtc.getSecond();
+    currentTime.year = now.year();
+    currentTime.month = now.month();
+    currentTime.day = now.day();
+    currentTime.hour = now.hour();
+    currentTime.minute = now.minute();
+    currentTime.second = now.second();
 };
