@@ -68,7 +68,7 @@ row_count = len(df1)
 
 
 # Define the number of future steps you want to predict
-NUM_OF_FUTURE_STEPS = 1
+NUM_OF_FUTURE_STEPS = 100
 
 # Start with the last `window_size` actual temperatures as the initial sequence
 last_sequence = new_temp[-window_size:].to_numpy()
@@ -83,7 +83,7 @@ def get_predictions1():
     future_predictions = []
     for i in range(NUM_OF_STATIONS):
         # Recursively predict the next temperature
-        for _ in range(NUM_OF_FUTURE_STEPS):
+        for i in range(NUM_OF_FUTURE_STEPS):
             # Reshape the last sequence for prediction
             sequence_for_prediction = last_sequence.reshape((1, window_size, 1))
             
@@ -91,10 +91,11 @@ def get_predictions1():
             next_temperature_pred = model1.predict(sequence_for_prediction).flatten()[0]
             
             # Append the prediction to the list of future temperatures
-            future_temperatures.append(next_temperature_pred)
+            if i == 99:
+                future_temperatures.append(next_temperature_pred)
             
             # Update the sequence with the predicted value
-            last_sequence = np.append(last_sequence[1:], next_temperature_pred)
+                last_sequence = np.append(last_sequence[1:], next_temperature_pred)
 
         #return result
         future_predictions.append(StationPrediction(i, future_temperatures))
