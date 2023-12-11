@@ -2,15 +2,6 @@
 #include <Wire.h>
 #include <math.h>
 
-/*
-
-TO DO -
-
-. Add heat index utility function (wet-bulb temperature), and also add this to possible readings values, route output to last reading.
-. Create icons for sun, cloud, error, and moon and display on top row.
-
-*/
-
 // initialisations for LCD display and LED outputs 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 Adafruit_LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
@@ -57,7 +48,6 @@ struct Prediction {
     uint8_t id;
     char day[10]; // day predicted.
     float predictedTemperature; // temperature predicted for day.
-    //char summary[25]; // summary of weather conditions from chatGPT API, max 25 characters.
 };
 
 // type casted enum class to uint8 to conserve memory and introduce better type safety 
@@ -113,8 +103,8 @@ struct Station {
 #define NUM_OF_STATIONS 2
 //I2C address should increment up from 8.
 Station stations [NUM_OF_STATIONS] = {
-    Station { "Station 1", 8, DefaultReadings, {1, "Wednesday", 12.0}, false},
-    Station { "Station 2", 9, DefaultReadings, {2, "Wednesday", 12.0} , false}
+    Station { "Station 1", 8, DefaultReadings, {}, false},
+    Station { "Station 2", 9, DefaultReadings, {} , false}
 };
 
 // pointers to cycle through stations and the menu 
@@ -197,61 +187,55 @@ void printCurrentScreen(int stationX = 3, int menuX = 0) {
     bool showingPrediction;
     
     Station* station = &stations[currentStationPtr];
-        // todo: display error if readings not available
         
-        char reading[6];
-        // convert each reading to a string
-        switch (currentMenuPtr) {
-            case 0:
-                dtostrf(station -> readings.humidity, 5, 1, reading);
-                break;
-            case 1:
-                dtostrf(station -> readings.temperature, 5, 1, reading);
-                break;
-            case 2:
-                sprintf(reading, "%d" , station -> readings.colourTemperature);
-                break;
-            case 3:
-                sprintf(reading, "%d", station -> readings.illuminance);
-                break;
-            case 4:
-                dtostrf(station -> prediction.predictedTemperature, 5, 1, reading);
-                showingPrediction = true;
-                break;
-            // no case for 4 since icon is displayed alongside station name
-        }
+    char reading[6];
+    // convert each reading to a string
+    switch (currentMenuPtr) {
+        case 0:
+            dtostrf(station -> readings.humidity, 5, 1, reading);
+            break;
+        case 1:
+            dtostrf(station -> readings.temperature, 5, 1, reading);
+            break;
+        case 2:
+            sprintf(reading, "%d" , station -> readings.colourTemperature);
+            break;
+        case 3:
+            sprintf(reading, "%d", station -> readings.illuminance);
+            break;
+        case 4:
+            dtostrf(station -> prediction.predictedTemperature, 5, 1, reading);
+            showingPrediction = true;
+            break;
+        // no case for 4 since icon is displayed alongside station name
+    }
 
+    // display station name on lcd
+    lcd.setCursor(stationX, 0);
+    delay(50);
+    lcd.print(station -> stationName);
 
-        // display station name on lcd
-        lcd.setCursor(stationX, 0);
-        delay(50);
-        lcd.print(station -> stationName);
+    // display sky condition icon on lcd
+    lcd.setCursor(13, 0);
+    delay(50);
+    printIcon(station);
+    
+    char* readingName;
 
-        // display sky condition icon on lcd
-        lcd.setCursor(13, 0);
-        delay(50);
-        printIcon(station);
-        
-        char* readingName;
+    if (!showingPrediction) {
+        readingName = strcat(strdup(readings[currentMenuPtr].readingName), station -> prediction.day);
+    } else {
+        readingName = strdup(readings[currentMenuPtr].readingName);
+    }
 
-        if (!showingPrediction) {
-            readingName = strcat(strdup(readings[currentMenuPtr].readingName), station -> prediction.day);
-        }
-        else {
-            readingName = strdup(readings[currentMenuPtr].readingName);
-        }
+    char* displayString  = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit); // create the string for the reading with its name, value and unit
 
-        
-        char* displayString  = strcat(strcat(readingName, reading), readings[currentMenuPtr].unit); // create the string for the reading with its name, value and units
-
-
-        currentDisplayString = displayString; //set global display string
-        
-
-        // display displayString on the bottom row of lcd
-        lcd.setCursor(menuX, 1);
-        delay(50);
-        lcd.print(displayString);
+    currentDisplayString = displayString; //set global display string
+    
+    // display displayString on the bottom row of lcd
+    lcd.setCursor(menuX, 1);
+    delay(50);
+    lcd.print(displayString);
 }
 
 #define SCROLL_DELAY 200
@@ -328,7 +312,7 @@ void switchStation() {
 
 void switchMenu() {
     lcd.clear();
-    currentMenuPtr = (currentMenuPtr + 1) % NUM_OF_READINGS; // wrap to number of readings (-1 as we omitted sky condition).
+    currentMenuPtr = (currentMenuPtr + 1) % NUM_OF_READINGS; // wrap to number of readings
     setConditionsForMenu();
     printCurrentScreen();
 }
@@ -343,7 +327,7 @@ void checkForEmergency() {
   while (!alarmFlag && i < NUM_OF_STATIONS) {
     Station* station = &stations[i];
 
-    //optional emergency condition for wet-bulb temperature using the Stull formula
+    // emergency condition for wet-bulb temperature using the Stull formula
     //Note: formula simply models evaporative cooling.
     //Using pow for efficiency compared to sqrt
     //evidence suggest 32 degrees celcius is critical wet bulb temperature.
@@ -352,9 +336,6 @@ void checkForEmergency() {
     + (0.00391838 * pow ((station -> readings.humidity), 1.5) * atan(0.023101 * (station -> readings.humidity)))
     - atan((station -> readings.humidity) - 1.676331) + atan((station -> readings.temperature) + (station -> readings.humidity))
     - 4.686035;
-
-    Serial.println("Wet bulb index: ");
-    Serial.println(T_w);
 
     // an emergency is when the temperature is less than -5 or greater than 35 degrees celsius
     // can opt to modify the low temperature reading, but evidence is conflicting to the critical low wet-bulb limit.
@@ -372,17 +353,13 @@ void checkForEmergency() {
 uint8_t setConditionForTemperature (float currentReading) {
     if (currentReading < 0) {
         return 2;
-    }
-    else if (0 < currentReading < 10) {
+    } else if (0 < currentReading < 10) {
         return 1;
-    }
-    else if (10 < currentReading < 20) {
+    } else if (10 < currentReading < 20) {
         return 0;
-    }
-    else if (20 < currentReading < 30) {
+    } else if (20 < currentReading < 30) {
         return 1; 
-    }
-    else if (currentReading > 30) {
+    } else if (currentReading > 30) {
         return 2;
     }
     
@@ -392,27 +369,31 @@ uint8_t setConditionForTemperature (float currentReading) {
 uint8_t setConditionForHumidity (float currentReading) {
     if (currentReading < 25) {
         return 2;
-    }
-    else if (25 < currentReading < 40){
+    } else if (25 < currentReading < 40){
         return 1;
-    }
-    else if (40 < currentReading < 60){
+    } else if (40 < currentReading < 60){
         return 0;
-    }
-    else if (60 < currentReading < 80){
+    } else if (60 < currentReading < 80){
         return 1;
-    }
-    else if (80 < currentReading < 100){
+    } else if (80 < currentReading < 100){
         return 2;
     }
 }
 
 uint8_t setConditionForColourTemperature (uint16_t currentReading) {
-    //..... nothing as of yet.
+    if (5500 < currentReading < 6500) {
+      return 0;
+    } else {
+      return 2;
+    }
 }
 
 uint8_t setConditionForIlluminance (uint16_t currentReading) {
-    //..... nothing as of yet.
+    if (1 < currentReading < 30000) {
+      return 0;
+    } else {
+      return 2;
+    }
 }
 
 //outputs 0: green / good 1: yellow / moderate 2: red / bad
@@ -431,29 +412,21 @@ void setConditionsForMenu() {
     //this method as opposed to accessing by index for memory safety, and also to deal with different dtypes of readings.
     switch (currentMenuPtr) {
         case 0:
-            Serial.println("Checking humidity now");
             condition = setConditionForHumidity(currentReadings -> humidity);
             break;
         case 1:
-            Serial.println("Checking temperature now");
-            //condition = setConditionForTemperature(currentReadings -> temperature);
-            condition = 1;
+            condition = setConditionForTemperature(currentReadings -> temperature);
             break;
         case 2:
-            Serial.println("Checking colour temp");
-            //condition = setConditionForColourTemperature(currentReadings -> colourTemperature);
-            condition = 0;
+            condition = setConditionForColourTemperature(currentReadings -> colourTemperature);
             break;
         case 3:
-            //condition = setConditionForIlluminance(currentReadings -> illuminance);
-            condition = 2;
+            condition = setConditionForIlluminance(currentReadings -> illuminance);
             break;
         
     }
 
     digitalWrite(conditionPins[condition], HIGH);
-
-
 }
 
 
@@ -468,16 +441,10 @@ union FloatToByteConverter {
 float convertBytesToFloat(int currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
     FloatToByteConverter converter;
 
-    Serial.println("Currently on byte index: ");
-    Serial.println(currentByte);
-
-    converter.theBytes[0] = bytes[currentByte];
-    currentByte++;
-    converter.theBytes[1] = bytes[currentByte];
-    currentByte++;
-    converter.theBytes[2] = bytes[currentByte];
-    currentByte++;
-    converter.theBytes[3] = bytes[currentByte];
+    for (int i = 0; i < 4; i++) {
+      converter.theBytes[i] = bytes[currentByte];
+      currentByte++;
+    }
     
     return converter.theFloat;
 }
@@ -489,9 +456,12 @@ union Int16ToByteConverter {
 
 uint16_t convertBytesToInt16 (int currentByte, byte bytes[NUM_OF_REQUIRED_BYTES]) {
     Int16ToByteConverter converter;
-    converter.theBytes[0] = bytes[currentByte];
-    currentByte ++;
-    converter.theBytes[1] = bytes[currentByte];
+    
+    for (int i = 0; i < 2; i++) {
+      converter.theBytes[i] = bytes[currentByte];
+      currentByte++;
+    }
+    
     return converter.theInt;
 }
 
@@ -519,6 +489,7 @@ void getSnapshots() {
         }
         
         station -> isAvailable = true;
+        currentByte ++; // we have processed the first byte
 
         // read all available bytes directly into initialised byte array 
         for (int i = 1; i < NUM_OF_REQUIRED_BYTES; i ++) {
@@ -528,33 +499,21 @@ void getSnapshots() {
         }
 
         // case for float readings, take next 4 bytes and read them to station struct
-        currentByte ++;
         station -> readings.temperature = convertBytesToFloat(currentByte, bytes);
-        currentByte += 3;
+        currentByte += 4;
    
-
-        currentByte ++;
         station -> readings.humidity = convertBytesToFloat(currentByte, bytes);
-        currentByte += 3;
+        currentByte += 4;
 
         // case for uint16_t readings, takes next two bytes and reads them to station struct 
-        currentByte ++;
         station -> readings.colourTemperature = convertBytesToInt16(currentByte, bytes);
-        currentByte++;
+        currentByte += 2;
 
-        currentByte ++;
         station -> readings.illuminance = convertBytesToInt16(currentByte, bytes);
-        currentByte++;
+        currentByte += 2;
 
         // case for value of skyCondition enum, casts byte to uint8_t 
-        currentByte ++;
         station -> readings.skyCondition =  static_cast<SkyCondition>(bytes[currentByte]);
-
-        Serial.println("Here are the transmitted bytes: ");
-        for (int i = 0; i < 14; i ++){
-            Serial.println("Byte received: ");
-            Serial.println(bytes[i]);
-        }
 
         Wire.endTransmission();
     }
@@ -575,7 +534,7 @@ byte* convertInt16ToBytes(uint16_t theInt) {
     return converter.theBytes;
 }
 
-// Purpose: send data for all stations to the DB 
+// PURPOSE: send data for all stations to the DB 
 
 #define DB_ADDRESS 7
 
@@ -601,15 +560,9 @@ void storeSnapshots() {
     }
 
 }
-/*
-PURPOSE - receives all of the predictions for each of the configured weather stations,
-distributes them appropriately based on slave address which is read back in.
 
-CORRECTION - Do this only for a certain ID in each time slot, not all of them. May want to introduce a button
-for each station which calls this function directly.
-
-Need to keep track of cu
-*/
+//PURPOSE - receives all of the predictions for each of the configured weather stations,
+//distributes them appropriately based on slave address which is read back in.
 void receiveAndDistributePredictions () {
     //begin transmission with DB 
 }
@@ -667,9 +620,6 @@ void loop () {
         FIRST_LOOP = false;
     }
     // make a request to receive data snapshot on regular interval
-    // todo: for now clearing previous entries 
-    
-
     if (currentTime - lastRequestTime >= requestDelay) {
         getSnapshots();
         //emergency condition checked each time new recordings made.
@@ -678,9 +628,6 @@ void loop () {
         lastRequestTime = currentTime;
     }
     
-
-    // check for emergency condition
-
     // make a request to receive predictions on regular interval
     if (currentTime - lastPredictionTime >= predictionDelay) {
         receiveAndDistributePredictions();
