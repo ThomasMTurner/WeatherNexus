@@ -6,10 +6,9 @@
 
 // useful constants //
 #define NUM_OF_STATIONS 1
-File dataFile; //initialise dataFile
+File dataFile; 
 
 // struct to hold predictions fed from Python time series model //
-
 struct Prediction {
     //id to reroute prediction to appropriate station (is their address).
     uint8_t id;
@@ -20,7 +19,7 @@ struct Prediction {
 #define NUM_OF_PREDICTIONS 2
 Prediction predictions[NUM_OF_STATIONS][NUM_OF_PREDICTIONS];
 
-// structure to store RTC synced time //
+// structure to store RTC synced time 
 struct RTC_Time {
     uint16_t year;
     uint8_t month;
@@ -84,7 +83,7 @@ void setup () {
 
     Serial.println("Starting");
     
-    //REMINDER: Python script should write predictions to serial over this baud rate
+    // REMINDER: Python script should write predictions to serial over this baud rate
     Wire.begin(DB_ADDRESS); // initialise I2C, join to DB address 7.
 
     Wire.onReceive(storeSnapshots); // handle receiving readings from master
@@ -192,14 +191,14 @@ void storeSnapshots () {
 
 
 Prediction* getModelPredictions () {
-    //automatic process spawner, run command calls subprocess in Python server script to send batch of predictions.
+    // automatic process spawner, run command calls subprocess in Python server script to send batch of predictions.
     Serial.println("run");
 
-    //this should the give us back the predictions as strings containing the station ID to route to, day and temperature reading.
+    // this should the give us back the predictions as strings containing the station ID to route to, day and temperature reading.
 
-    //keep track of the current day
+    // keep track of the current day
     uint8_t i = 0;
-    //keep track of the current prediction
+    // keep track of the current prediction
     uint8_t j = 0;
     while (Serial.available() > 0){
         char day[11];
@@ -232,9 +231,7 @@ Prediction* getModelPredictions () {
     
 };
 
-// MODIFICATION NEEDED: send only the batch for a particular station
-// Not sure how this is possible with the way I2C is set up.
-// Also, batches will be only for the next two days.
+// sends predictions to the master weather hub
 void sendPredictions() {
     getModelPredictions();
     // Sends over I2C
