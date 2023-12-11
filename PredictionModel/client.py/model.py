@@ -42,9 +42,9 @@ def df_to_X_y(df, window_size = 4):
     X = []
     y = []
     for i in range(len(df_np)-window_size):
-        row = [[a] for a in df_np[i:i+5]]
+        row = [[a] for a in df_np[i:i+4]]
         X.append(row)
-        label = df_np[i+5]
+        label = df_np[i+4]
         y.append(label)
     return np.array(X), np.array(y)
 
@@ -65,23 +65,26 @@ model1.add(Dense(1, 'linear'))
 cp = ModelCheckpoint('model1/', save_best_only=True) #saves the best model 
 model1.compile(loss=MeanSquaredError(), optimizer = Adam(learning_rate=0.0001), metrics=[RootMeanSquaredError()]) #
 
+#below is commented out as we have already fit model so no need to fit model every time you want a prediction
 #model1.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, callbacks=[cp])
 
 model1 = load_model('model1/')
 
-df1 = pd.read_csv('test.csv', encoding='UTF-8') #read in another dataset this will be replaced by values from arduino
-df1['Date Time'] = pd.to_datetime(df1['Date Time'], format='%d.%m.%Y %H:%M:%S')
-new_temp = df1['T (degC)']
+
+df1 = pd.read_csv('training_sets/station1.csv', encoding='UTF-8') #assuming their is only one station currently but easily expendable 
+df1['Date Time'] = df1.year + ' ' + df1.month + ' ' + df1.day + ' ' + df1.hour
+df1['Date Time'] = pd.to_datetime(df1['Date Time'], format = '%Y %M %d %h')
+new_temp = df1['temperature']
 
 # Define the number of future steps you want to predict
-NUM_OF_FUTURE_STEPS = 5 
+NUM_OF_FUTURE_STEPS = 1
 
 # Start with the last `window_size` actual temperatures as the initial sequence
 last_sequence = new_temp[-window_size:].to_numpy()
 
 future_temperatures = []
 #gets the number of stations need to return predictions for
-NUM_OF_STATIONS = len([f for f in os.listdir("training_sets") if os.path.isfile(os.path.join("training_sets", f))])
+NUM_OF_STATIONS = 1 #len([f for f in os.listdir("training_sets") if os.path.isfile(os.path.join("training_sets", f))])
 
 StationPrediction = namedtuple('StationPrediction', ['id', 'predictions'])
 
