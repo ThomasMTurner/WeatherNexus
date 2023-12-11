@@ -318,8 +318,6 @@ void switchMenu() {
 }
 
 // PURPOSE: turns on the alarm if any of the station readings are extreme
-// TO DO: checks all stations at once, may want to modify to pinpoint station with emergency condition.
-// Above is possibly remediated by the user simply checking conditions for all available stations.
 void checkForEmergency() {
   int i = 0;
 
