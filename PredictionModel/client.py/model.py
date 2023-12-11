@@ -142,11 +142,15 @@ if row_count > 2000: #if the data from the weather stations is large enough trai
     model2.add(Dense(8, 'relu'))
     model2.add(Dense(1, 'linear'))
 
-    X, _ = df_to_X_y(new_temp, window_size)
+    X, y = df_to_X_y(new_temp, window_size)
+    X_train, y_train = X[:1500], y[:1500]
+    X_val, y_val = X[1500:], y[1500:]
 
     cp1 = ModelCheckpoint('model2/', save_best_only=True) #saves the best model 
     model2.compile(loss=MeanSquaredError(), optimizer = Adam(learning_rate=0.0001), metrics=[RootMeanSquaredError()]) 
-    model2.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, callbacks=[cp])
+    model2.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, callbacks=[cp1])
+    
+    model2 = load_model('model2/')
 
     get_predictions2()
 else: #otherwise use exisiting model1 which is data from a weather station in Germany to predict the future temperatures. 
