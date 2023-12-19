@@ -1,2 +1,2 @@
 # WeatherSystem
-Project connecting multiple Arduino weather stations to master controller, enabling presentation, manipulation and prediction of weather data.
+System connecting multiple Arduino weather stations to master controller, enabling presentation, manipulation and prediction of weather data.
